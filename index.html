@@ -542,7 +542,7 @@ function renderKPIs(){
         <div class="kpi"><div class="lab">Lucro Bruto %</div><div class="${margemBrutaClass}">${k.margemBrutaPercent.toFixed(2)}%</div></div>
         <div class="kpi"><div class="lab">Lucro Líquido NBS %</div><div class="${margemLiquidaClass}">${k.margemLiquidaPercent.toFixed(2)}%</div></div>
         <div class="kpi"><div class="lab">Ano Médio</div><div class="val">${k.anoMedio? Math.round(k.anoMedio): '—'}</div></div>
-        <div class="kpi"><div class="lab">Média Dias de Estoque (DPT)</div><div class="val">${Number.isFinite(k.mediaDiasEstoque)? k.mediaDiasEstoque.toFixed(1): '0'}</div></div>
+        <div class="kpi"><div class="lab">Média Dias de Estoque</div><div class="val">${Number.isFinite(k.mediaDiasEstoque)? k.mediaDiasEstoque.toFixed(1): '0'}</div></div>
         <div class="kpi"><div class="lab">KM Médio</div><div class="val">${k.kmMedio? NUM(Math.round(k.kmMedio)) : '—'}</div></div>
         <div class="kpi"><div class="lab">Ganhos Indiretos</div><div class="val">${BRL(k.ganhosIndiretosTotal)}</div></div>
     `;
@@ -734,4 +734,5 @@ function renderCharts(rows){
 }
 </script>
 </body>
+
 </html>
