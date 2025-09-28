@@ -116,7 +116,10 @@
             <div class="chart large"><canvas id="modeloChart"></canvas></div>
             <div class="chart"><canvas id="faixasEstoqueChart"></canvas></div>
             <div class="chart"><canvas id="vendedorRecebeuChart"></canvas></div>
-            <div class="chart wide"><canvas id="vendedorChart"></canvas></div>
+
+            <!-- AGORA: dois gráficos lado a lado: Vendas TOP10 e Margem TOP10 -->
+            <div class="chart"><canvas id="vendedorChart"></canvas></div>
+            <div class="chart"><canvas id="vendedorMargemChart"></canvas></div>
         </div>
     </div>
 
@@ -182,13 +185,13 @@ function parseDateExcel(v){
     }
     const d = new Date(v); return isNaN(+d)?null:d;
 }
-/* >>> NOVO: extrai mês por padrão “/MM/” quando a célula é texto (dd/mm/aaaa hh:mm:ss) <<< */
+/* >>> extrai mês por padrão “/MM/” quando a célula é texto <<< */
 function monthNameFromCell(cell){
     const nomes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
     if(cell===null || cell===undefined || cell==='') return 'Não informado';
 
     if(typeof cell === 'string'){
-        const m = cell.match(/\/(\d{2})\//); // pega o MM entre barras
+        const m = cell.match(/\/(\d{2})\//);
         if(m){
             const mm = parseInt(m[1],10);
             if(mm>=1 && mm<=12){
@@ -196,7 +199,6 @@ function monthNameFromCell(cell){
                 return nome.charAt(0).toUpperCase()+nome.slice(1);
             }
         }
-        // fallback: tenta converter mesmo assim
         const d = new Date(cell);
         if(!isNaN(+d)){
             const nome = d.toLocaleDateString('pt-BR',{month:'long'});
@@ -214,7 +216,6 @@ function monthNameFromCell(cell){
         return 'Não informado';
     }
 
-    // outros tipos
     const d = new Date(cell);
     if(!isNaN(+d)){
         const nome = d.toLocaleDateString('pt-BR',{month:'long'});
@@ -277,7 +278,7 @@ function findCol(headers, aliases){
 /* ===== Estado ===== */
 let allData = [];
 let filtered = [];
-let charts = { loja:null, modelo:null, vendedor:null, faixas:null, vendRecebeu:null };
+let charts = { loja:null, modelo:null, vendedor:null, vendedorMargem:null, faixas:null, vendRecebeu:null };
 
 /* set de placas excluídas */
 const excludedPlates = new Set();
@@ -495,7 +496,7 @@ function parseRows(headers, data){
         const dptRaw = toNumberBR(get(idx.diasEst));
         const dptNorm = Number.isFinite(dptRaw) ? (dptRaw < 0 ? null : dptRaw) : null;
 
-        // >>> MÊS baseado na “Data venda”
+        // MÊS baseado na “Data venda”
         const dataVendaCell = get(idx.dataVend);
         const mesCap = monthNameFromCell(dataVendaCell);
 
@@ -731,7 +732,7 @@ function initSorting(){
 }
 initSorting();
 
-/* seleção múltipla pelo nome do vendedor (tabela) sem scroll */
+/* seleção múltipla pelo nome do vendedor (tabela) e exclusão por placa */
 function toggleVendorSelection(name){
     if(!name || name==='—' || name==='Não informado') return;
     const set = new Set(state.Vendedor);
@@ -750,7 +751,6 @@ document.querySelector('#grid tbody').addEventListener('click', (e)=>{
         return;
     }
 
-    // clique na PLACA para excluir/incluir só aquele carro
     if(cell.classList.contains('cell-placa')){
         const placa = (cell.textContent || '').trim();
         withStableScroll(()=>{
@@ -762,7 +762,7 @@ document.querySelector('#grid tbody').addEventListener('click', (e)=>{
     }
 });
 
-/* tooltip qtd/% */
+/* tooltips */
 function pctTooltip() {
     return {
         callbacks: {
@@ -776,11 +776,26 @@ function pctTooltip() {
         }
     };
 }
+/* tooltip para margem média (mostra % e nº de vendas do vendedor) */
+function margemTooltip(vendasPorVendedor){
+    return {
+        callbacks:{
+            label: function(ctx){
+                const i = ctx.dataIndex;
+                const label = ctx.chart.data.labels[i];
+                const avg = Number(ctx.raw) || 0;
+                const qtd = vendasPorVendedor[label] || 0;
+                return `${avg.toFixed(2).replace('.',',')}% (${qtd} vendas)`;
+            }
+        }
+    };
+}
 
 /* gráficos */
 function renderCharts(rows){
     const commonOpts = { responsive:true, maintainAspectRatio:false, animation:false };
 
+    /* por loja */
     const porLoja={}; rows.forEach(r=>{ const k=r.Loja||'Não informado'; porLoja[k]=(porLoja[k]||0)+1; });
     const lojaArr = Object.entries(porLoja).sort((a,b)=>b[1]-a[1]);
     const l1 = lojaArr.map(x=>x[0]);
@@ -792,6 +807,7 @@ function renderCharts(rows){
         options:{ ...commonOpts, plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Vendas por Loja'} } }
     });
 
+    /* top modelos */
     const porMod={}; rows.forEach(r=>{ const k=r.ModeloBase||'Não informado'; porMod[k]=(porMod[k]||0)+1; });
     const top = Object.entries(porMod).sort((a,b)=>b[1]-a[1]).slice(0,5);
     if(charts.modelo) charts.modelo.destroy();
@@ -801,6 +817,7 @@ function renderCharts(rows){
         options:{ ...commonOpts, cutout:'55%', plugins:{ tooltip: pctTooltip(), title:{display:true, text:'Top 5 Modelos Mais Vendidos'} } }
     });
 
+    /* faixas de estoque (semáforo) */
     const faixas = { '1–30':0, '31–60':0, '61–90':0, '91–120':0, '121+':0 };
     rows.forEach(r=>{
         const d = r['Dias de Estoque'];
@@ -833,17 +850,18 @@ function renderCharts(rows){
         }
     });
 
-    const porVend={}; rows.forEach(r=>{ const k=r.Vendedor||'Não informado'; porVend[k]=(porVend[k]||0)+1; });
-    const vendArr = Object.entries(porVend).sort((a,b)=>b[1]-a[1]);
-    const l3 = vendArr.map(x=>x[0]);
-    const d3 = vendArr.map(x=>x[1]);
+    /* Vendas por Vendedor — TOP 10 */
+    const vendasVendMap={}; rows.forEach(r=>{ const k=r.Vendedor||'Não informado'; vendasVendMap[k]=(vendasVendMap[k]||0)+1; });
+    const vendArrTop10 = Object.entries(vendasVendMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    const l3 = vendArrTop10.map(x=>x[0]);
+    const d3 = vendArrTop10.map(x=>x[1]);
     if(charts.vendedor) charts.vendedor.destroy();
     charts.vendedor=new Chart(document.getElementById('vendedorChart').getContext('2d'),{
         type:'bar',
         data:{labels:l3,datasets:[{label:'Vendas',data:d3,borderWidth:2,borderRadius:8}]},
         options:{ 
             ...commonOpts,
-            plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Vendas por Vendedor'} },
+            plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'TOP 10 Vendedores — Vendas'} },
             onClick: (evt) => {
                 const points = charts.vendedor.getElementsAtEventForMode(evt, 'nearest', {intersect:true}, true);
                 if(!points || !points.length) return;
@@ -860,6 +878,57 @@ function renderCharts(rows){
         }
     });
 
+    /* Margem média por vendedor — TOP 10 */
+    const margemAgg = {};
+    rows.forEach(r=>{
+        const vend = r.Vendedor || 'Não informado';
+        const m = rowMargin(r);
+        if(!Number.isFinite(m)) return;
+        if(!margemAgg[vend]) margemAgg[vend] = {sum:0, n:0};
+        margemAgg[vend].sum += m;
+        margemAgg[vend].n += 1;
+    });
+    const avgArr = Object.entries(margemAgg)
+        .map(([vend, obj])=> [vend, obj.n ? (obj.sum/obj.n) : 0, obj.n])
+        .filter(([,avg,n])=> n>0)
+        .sort((a,b)=> b[1]-a[1])
+        .slice(0,10);
+    const lM = avgArr.map(x=>x[0]);
+    const dM = avgArr.map(x=> Number(x[1].toFixed(2)));
+    // mapa auxiliar vendedor->qtd vendas para tooltip
+    const mapQtd = Object.fromEntries(avgArr.map(([v, , n])=>[v,n]));
+
+    if(charts.vendedorMargem) charts.vendedorMargem.destroy();
+    charts.vendedorMargem=new Chart(document.getElementById('vendedorMargemChart').getContext('2d'),{
+        type:'bar',
+        data:{labels:lM, datasets:[{label:'Margem média (%)', data:dM, borderWidth:2, borderRadius:8}]},
+        options:{
+            ...commonOpts,
+            plugins:{ 
+                legend:{display:false}, 
+                tooltip: margemTooltip(mapQtd),
+                title:{display:true, text:'TOP 10 Vendedores — Margem média (%)'}
+            },
+            scales:{
+                y:{ ticks:{ callback:(v)=> v + '%' } }
+            },
+            onClick: (evt) => {
+                const points = charts.vendedorMargem.getElementsAtEventForMode(evt, 'nearest', {intersect:true}, true);
+                if(!points || !points.length) return;
+                const idx = points[0].index;
+                const vendedor = charts.vendedorMargem.data.labels[idx];
+                withStableScroll(()=> {
+                    const set = new Set(state.Vendedor);
+                    if(set.has(vendedor)) set.delete(vendedor); else set.add(vendedor);
+                    state.Vendedor = [...set];
+                    pillInstances.Vendedor.sync();
+                    applyFilters();
+                });
+            }
+        }
+    });
+
+    /* Vendedores que receberam carros (troca) — TOP 10 */
     const porReceb={};
     rows.forEach(r=>{
         const k = (r.VendedorRecebeu && String(r.VendedorRecebeu).trim()) ? r.VendedorRecebeu : 'Não informado';
