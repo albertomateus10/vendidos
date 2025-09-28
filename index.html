@@ -75,7 +75,7 @@
     th.active .sort{color:#2563eb}
     tr:hover td{background:#fafcff}
 
-    /* >>> NOVO: célula de placa clicável para excluir/recuperar o carro <<< */
+    /* célula de placa clicável (excluir/reincluir) */
     td.cell-placa{ cursor:pointer; text-decoration:underline; }
     td.cell-placa:hover{ text-decoration:none; }
 </style>
@@ -182,6 +182,47 @@ function parseDateExcel(v){
     }
     const d = new Date(v); return isNaN(+d)?null:d;
 }
+/* >>> NOVO: extrai mês por padrão “/MM/” quando a célula é texto (dd/mm/aaaa hh:mm:ss) <<< */
+function monthNameFromCell(cell){
+    const nomes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+    if(cell===null || cell===undefined || cell==='') return 'Não informado';
+
+    if(typeof cell === 'string'){
+        const m = cell.match(/\/(\d{2})\//); // pega o MM entre barras
+        if(m){
+            const mm = parseInt(m[1],10);
+            if(mm>=1 && mm<=12){
+                const nome = nomes[mm-1];
+                return nome.charAt(0).toUpperCase()+nome.slice(1);
+            }
+        }
+        // fallback: tenta converter mesmo assim
+        const d = new Date(cell);
+        if(!isNaN(+d)){
+            const nome = d.toLocaleDateString('pt-BR',{month:'long'});
+            return nome.charAt(0).toUpperCase()+nome.slice(1);
+        }
+        return 'Não informado';
+    }
+
+    if(typeof cell === 'number'){
+        const d = parseDateExcel(cell);
+        if(d){
+            const nome = d.toLocaleDateString('pt-BR',{month:'long'});
+            return nome.charAt(0).toUpperCase()+nome.slice(1);
+        }
+        return 'Não informado';
+    }
+
+    // outros tipos
+    const d = new Date(cell);
+    if(!isNaN(+d)){
+        const nome = d.toLocaleDateString('pt-BR',{month:'long'});
+        return nome.charAt(0).toUpperCase()+nome.slice(1);
+    }
+    return 'Não informado';
+}
+
 function modelBase(txt){
     if(!txt) return 'Não informado';
     const u = String(txt).toUpperCase();
@@ -238,7 +279,7 @@ let allData = [];
 let filtered = [];
 let charts = { loja:null, modelo:null, vendedor:null, faixas:null, vendRecebeu:null };
 
-/* >>> NOVO: set de placas excluídas <<< */
+/* set de placas excluídas */
 const excludedPlates = new Set();
 
 const state = { search:'', Loja:[], Vendedor:[], Modelo:[], Tipo:[], Mes:[], ValorFaixa:[], DptFaixa:[] };
@@ -345,6 +386,7 @@ class MultiPill {
     }
 }
 const pillInstances = {
+    Mes:        new MultiPill({label:'Mês', getter:()=>state.Mes, setter:v=>state.Mes=v}),
     Loja:       new MultiPill({label:'Loja', getter:()=>state.Loja, setter:v=>state.Loja=v}),
     Vendedor:   new MultiPill({label:'Vendedor', getter:()=>state.Vendedor, setter:v=>state.Vendedor=v}),
     Modelo:     new MultiPill({label:'Modelo', getter:()=>state.Modelo, setter:v=>state.Modelo=v}),
@@ -354,7 +396,8 @@ const pillInstances = {
 };
 (function mountPills(){
     const holder = document.getElementById('filters');
-    ['Loja','Vendedor','Modelo','Tipo','ValorFaixa','DptFaixa'].forEach(k=>{
+    /* Ordem visual: Mês à esquerda de Loja */
+    ['Mes','Loja','Vendedor','Modelo','Tipo','ValorFaixa','DptFaixa'].forEach(k=>{
         holder.appendChild(pillInstances[k].el);
     });
     pillInstances.ValorFaixa.setOptions(VALOR_FAIXAS.map(f=>f.label), {keepOrder:true});
@@ -440,7 +483,7 @@ function parseRows(headers, data){
         km:        findCol(headers, ['KM','Km','Quilometragem','KM_USADO']),
         ano:       findCol(headers, ['Ano','ANO','Ano Modelo','Ano/Modelo','ANO MODELO']),
         diasEst:   findCol(headers, ['DPT','Dias de Estoque','DIAS DE ESTOQUE','DiasEstoque','Dias_Estoque','Dias em Estoque']),
-        dataVend:  findCol(headers, ['Data Venda','DATA VENDA','Data de Venda','Data','DATA']),
+        dataVend:  findCol(headers, ['Data Venda','DATA VENDA','Data de Venda','Data venda','Data','DATA']),
         ganhosInd: findCol(headers, ['Ganhos Indiretos','GANHOS INDIRETOS','Ganho Indireto','GANHO INDIRETO'])
     };
 
@@ -451,6 +494,10 @@ function parseRows(headers, data){
 
         const dptRaw = toNumberBR(get(idx.diasEst));
         const dptNorm = Number.isFinite(dptRaw) ? (dptRaw < 0 ? null : dptRaw) : null;
+
+        // >>> MÊS baseado na “Data venda”
+        const dataVendaCell = get(idx.dataVend);
+        const mesCap = monthNameFromCell(dataVendaCell);
 
         return {
             Vendedor: get(idx.vendedor) ?? 'Não informado',
@@ -472,18 +519,25 @@ function parseRows(headers, data){
             KM: toNumberBR(get(idx.km)),
             Ano: normalizeYear(get(idx.ano)),
             'Dias de Estoque': dptNorm,
-            MesNome: (()=>{
-                const d = parseDateExcel(get(idx.dataVend));
-                return d ? d.toLocaleDateString('pt-BR',{month:'long'}) : 'Não informado';
-            })(),
+            MesNome: mesCap,
             'Ganhos Indiretos': toNumberBR(get(idx.ganhosInd))
         };
     });
 
+    /* opções dos filtros dinâmicos */
     pillInstances.Loja.setOptions(allData.map(x=>x.Loja));
     pillInstances.Vendedor.setOptions(allData.map(x=>x.Vendedor));
     pillInstances.Modelo.setOptions(allData.map(x=>x.ModeloBase));
     pillInstances.Tipo.setOptions(allData.map(x=>x.Tipo));
+
+    /* Mês: ordena Janeiro–Dezembro mas lista só os existentes */
+    const orderMes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+    const mesesUnicos = [...new Set(allData
+        .map(x=>x.MesNome)
+        .filter(m=>m && m!=='Não informado'))]
+        .sort((a,b)=> orderMes.indexOf(a.toLowerCase()) - orderMes.indexOf(b.toLowerCase()));
+    pillInstances.Mes.setOptions(mesesUnicos, {keepOrder:true});
+
     pillInstances.ValorFaixa.setOptions(VALOR_FAIXAS.map(f=>f.label), {keepOrder:true});
     pillInstances.DptFaixa.setOptions(DPT_FAIXAS.map(f=>f.label), {keepOrder:true});
 
@@ -499,7 +553,12 @@ document.getElementById('clearAll').addEventListener('click', ()=>{
         Object.values(pillInstances).forEach(p=>{ p.setter([]); p.render(); p.sync(); });
         pillInstances.ValorFaixa.setOptions(VALOR_FAIXAS.map(f=>f.label), {keepOrder:true});
         pillInstances.DptFaixa.setOptions(DPT_FAIXAS.map(f=>f.label), {keepOrder:true});
-        /* >>> NOVO: limpa exclusões de placas ao limpar filtros <<< */
+        const orderMes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+        const mesesUnicos = [...new Set(allData
+            .map(x=>x.MesNome)
+            .filter(m=>m && m!=='Não informado'))]
+            .sort((a,b)=> orderMes.indexOf(a.toLowerCase()) - orderMes.indexOf(b.toLowerCase()));
+        pillInstances.Mes.setOptions(mesesUnicos, {keepOrder:true});
         excludedPlates.clear();
         applyFilters();
     });
@@ -512,6 +571,7 @@ function applyFilters(){
         const vendOk = state.Vendedor.length===0 || state.Vendedor.includes(r.Vendedor);
         const modOk  = state.Modelo.length===0 || state.Modelo.includes(r.ModeloBase);
         const tipoOk = state.Tipo.length===0 || state.Tipo.includes(r.Tipo);
+        const mesOk  = state.Mes.length===0 || state.Mes.includes(r.MesNome);
 
         const v = +r['Valor Venda']||0;
         const valorOk = state.ValorFaixa.length===0 || state.ValorFaixa.some(lbl => {
@@ -528,10 +588,9 @@ function applyFilters(){
         const q = state.search;
         const qOk = !q || [ r['Descrição Modelo'], r.Placa, r.ModeloBase ].some(vv=> (vv||'').toString().toLowerCase().includes(q));
 
-        /* >>> NOVO: descartar carros cuja placa foi clicada <<< */
         const notExcluded = !excludedPlates.has(r.Placa);
 
-        return lojaOk && vendOk && modOk && tipoOk && valorOk && dptOk && qOk && notExcluded;
+        return lojaOk && vendOk && modOk && tipoOk && mesOk && valorOk && dptOk && qOk && notExcluded;
     });
     renderKPIs();
     renderTable(sortRows([...filtered]));
@@ -672,7 +731,7 @@ function initSorting(){
 }
 initSorting();
 
-/* ===== Seleção múltipla pelo NOME do vendedor (tabela) sem scroll ===== */
+/* seleção múltipla pelo nome do vendedor (tabela) sem scroll */
 function toggleVendorSelection(name){
     if(!name || name==='—' || name==='Não informado') return;
     const set = new Set(state.Vendedor);
@@ -691,7 +750,7 @@ document.querySelector('#grid tbody').addEventListener('click', (e)=>{
         return;
     }
 
-    /* >>> NOVO: clique na PLACA para excluir/incluir apenas aquele carro <<< */
+    // clique na PLACA para excluir/incluir só aquele carro
     if(cell.classList.contains('cell-placa')){
         const placa = (cell.textContent || '').trim();
         withStableScroll(()=>{
@@ -703,7 +762,7 @@ document.querySelector('#grid tbody').addEventListener('click', (e)=>{
     }
 });
 
-/* ===== Tooltip qtd/% ===== */
+/* tooltip qtd/% */
 function pctTooltip() {
     return {
         callbacks: {
@@ -718,7 +777,7 @@ function pctTooltip() {
     };
 }
 
-/* ===== Gráficos (com animation:false) ===== */
+/* gráficos */
 function renderCharts(rows){
     const commonOpts = { responsive:true, maintainAspectRatio:false, animation:false };
 
@@ -734,12 +793,12 @@ function renderCharts(rows){
     });
 
     const porMod={}; rows.forEach(r=>{ const k=r.ModeloBase||'Não informado'; porMod[k]=(porMod[k]||0)+1; });
-    const top = Object.entries(porMod).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    const top = Object.entries(porMod).sort((a,b)=>b[1]-a[1]).slice(0,5);
     if(charts.modelo) charts.modelo.destroy();
     charts.modelo=new Chart(document.getElementById('modeloChart').getContext('2d'),{
         type:'doughnut',
         data:{labels:top.map(x=>x[0]), datasets:[{data:top.map(x=>x[1])}]},
-        options:{ ...commonOpts, cutout:'55%', plugins:{ tooltip: pctTooltip(), title:{display:true, text:'Top 10 Modelos Mais Vendidos'} } }
+        options:{ ...commonOpts, cutout:'55%', plugins:{ tooltip: pctTooltip(), title:{display:true, text:'Top 5 Modelos Mais Vendidos'} } }
     });
 
     const faixas = { '1–30':0, '31–60':0, '61–90':0, '91–120':0, '121+':0 };
