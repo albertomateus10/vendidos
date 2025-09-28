@@ -12,8 +12,9 @@
         --shadow:0 10px 24px rgba(30,64,175,.15); --danger:#dc2626; --warn:#f59e0b;
     }
     *{box-sizing:border-box}
+    html,body{scroll-behavior:auto}
     body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto; background:linear-gradient(135deg,#f0f6ff,#eaf3ff); margin:0; color:var(--ink)}
-    .container{max-width:1600px; margin:24px auto; background:#fff; border:1px solid rgba(0,0,0,.04); border-radius:22px; box-shadow:var(--shadow); padding:28px}
+    .container{max-width:1600px; margin:24px auto; background:#fff; border:1px solid rgba(0,0,0,.04); border-radius:22px; box-shadow:var(--shadow); padding:28px; min-height:60vh}
     .header{display:flex; align-items:center; gap:14px; margin-bottom:6px}
     .header h1{margin:0; font-size:28px; font-weight:800; background:linear-gradient(135deg,var(--primary),var(--primary-2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent}
     .sub{color:#64748b; margin:0 0 16px}
@@ -114,7 +115,6 @@
             <div class="chart"><canvas id="lojaChart"></canvas></div>
             <div class="chart large"><canvas id="modeloChart"></canvas></div>
             <div class="chart"><canvas id="faixasEstoqueChart"></canvas></div>
-            <!-- Ao lado do de DPT -->
             <div class="chart"><canvas id="vendedorRecebeuChart"></canvas></div>
             <div class="chart wide"><canvas id="vendedorChart"></canvas></div>
         </div>
@@ -155,6 +155,18 @@ const $ = s => document.querySelector(s);
 const BRL = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(+v||0);
 const NUM = v => new Intl.NumberFormat('pt-BR').format(+v||0);
 
+/* ===== Scroll estável (contra “pulo para cima”) ===== */
+function withStableScroll(fn){
+    const x = window.pageXOffset || 0;
+    const y = window.pageYOffset || 0;
+    fn();
+    requestAnimationFrame(()=>{ 
+        window.scrollTo(x,y);
+        requestAnimationFrame(()=>{ window.scrollTo(x,y); }); // segunda passada garante após reflow/Chart.js
+    });
+}
+
+/* ===== Conversões ===== */
 function toNumberBR(x){
     if (x===null || x===undefined || x==='') return 0;
     if (typeof x==='number') return x;
@@ -252,8 +264,22 @@ class MultiPill {
         this.el.innerHTML=`<strong>${label}:</strong> <span class="value">Todos</span> <i class="fa-solid fa-chevron-down chev"></i><div class="menu"></div>`;
         this.menu=this.el.querySelector('.menu'); this.valueEl=this.el.querySelector('.value');
         this.searchInput = null;
-        this.el.addEventListener('click',e=>{ if(!e.target.closest('.menu')) this.el.classList.toggle('open'); if(this.searchInput) this.searchInput.focus(); });
-        document.addEventListener('click',e=>{ if(!this.el.contains(e.target)) this.el.classList.remove('open'); });
+
+        this.el.addEventListener('click',e=>{
+            if(!e.target.closest('.menu')){
+                const x = window.pageXOffset, y = window.pageYOffset;
+                this.el.classList.toggle('open');
+                if(this.searchInput) this.searchInput.focus();
+                window.scrollTo(x,y); // abrir/fechar sem mexer no scroll
+            }
+        });
+        document.addEventListener('click',e=>{
+            if(!this.el.contains(e.target)){
+                const x = window.pageXOffset, y = window.pageYOffset;
+                this.el.classList.remove('open');
+                window.scrollTo(x,y);
+            }
+        });
     }
     setOptions(opts, {keepOrder=false}={}){
         const unique = [...new Set(opts.filter(Boolean))];
@@ -270,24 +296,45 @@ class MultiPill {
         const aplicar=document.createElement('button'); aplicar.textContent='Aplicar'; aplicar.className='apply';
         acts.append(limpar,aplicar); this.menu.append(acts);
         const list=document.createElement('div'); list.className='list'; this.menu.append(list);
+
         for(const o of this.options){
-            const row=document.createElement('label'); row.className='opt';
-            row.dataset.text = String(o).toLowerCase();
+            const row=document.createElement('label'); row.className='opt'; row.dataset.text = String(o).toLowerCase();
             const chk=document.createElement('input'); chk.type='checkbox'; chk.value=o; chk.checked=sel.has(o);
             row.append(chk, document.createElement('span')); row.lastChild.textContent=o;
             list.append(row);
         }
+
         s.oninput = ()=>{
             const q = s.value.toLowerCase();
             list.querySelectorAll('.opt').forEach(el=>{
                 el.style.display = el.dataset.text.includes(q) ? '' : 'none';
             });
         };
-        limpar.onclick=()=>{ this.setter([]); this.sync(); applyFilters(); };
-        aplicar.onclick=()=>{ 
+
+        // Limpar/Aplicar com preservação estável do scroll
+        limpar.onclick=()=> withStableScroll(()=>{
+            this.setter([]);
+            this.sync();
+            applyFilters();
+        });
+        aplicar.onclick=()=> withStableScroll(()=>{
             const vals=[...list.querySelectorAll('input:checked')].map(i=>i.value);
-            this.setter(vals); this.el.classList.remove('open'); this.sync(); applyFilters(); 
-        };
+            this.setter(vals);
+            this.el.classList.remove('open');
+            this.sync();
+            applyFilters();
+        });
+
+        // Apenas alterar preview do texto (sem aplicar filtro a cada clique)
+        list.addEventListener('click', (ev)=>{
+            const input = ev.target.closest('input[type="checkbox"]');
+            if(!input) return;
+            const temp = new Set(this.getter());
+            if(input.checked) temp.add(input.value); else temp.delete(input.value);
+            const arr = [...temp];
+            this.valueEl.textContent = !arr.length ? 'Todos' : (arr.length<=2 ? arr.join(', ') : `${arr[0]}, ${arr[1]} (+${arr.length-2})`);
+        });
+
         this.sync();
     }
     sync(){
@@ -442,14 +489,16 @@ function parseRows(headers, data){
 }
 
 /* ===== Busca e Limpar ===== */
-document.getElementById('q').addEventListener('input', e=>{ state.search=e.target.value.toLowerCase(); applyFilters(); });
+document.getElementById('q').addEventListener('input', e=>{ state.search=e.target.value.toLowerCase(); withStableScroll(()=>applyFilters()); });
 document.getElementById('clearAll').addEventListener('click', ()=>{
-    state.search=''; document.getElementById('q').value='';
-    state.Loja=[]; state.Vendedor=[]; state.Modelo=[]; state.Tipo=[]; state.Mes=[]; state.ValorFaixa=[]; state.DptFaixa=[];
-    Object.values(pillInstances).forEach(p=>{ p.setter([]); p.render(); p.sync(); });
-    pillInstances.ValorFaixa.setOptions(VALOR_FAIXAS.map(f=>f.label), {keepOrder:true});
-    pillInstances.DptFaixa.setOptions(DPT_FAIXAS.map(f=>f.label), {keepOrder:true});
-    applyFilters();
+    withStableScroll(()=>{
+        state.search=''; document.getElementById('q').value='';
+        state.Loja=[]; state.Vendedor=[]; state.Modelo=[]; state.Tipo=[]; state.Mes=[]; state.ValorFaixa=[]; state.DptFaixa=[];
+        Object.values(pillInstances).forEach(p=>{ p.setter([]); p.render(); p.sync(); });
+        pillInstances.ValorFaixa.setOptions(VALOR_FAIXAS.map(f=>f.label), {keepOrder:true});
+        pillInstances.DptFaixa.setOptions(DPT_FAIXAS.map(f=>f.label), {keepOrder:true});
+        applyFilters();
+    });
 });
 
 /* ===== Filtragem + Ordenação ===== */
@@ -467,7 +516,7 @@ function applyFilters(){
             return fx ? fx.test(v) : true;
         });
 
-        // DPT (faixas) — inclui zero na primeira faixa
+        // DPT (faixas)
         const d = r['Dias de Estoque'];
         const dptOk = state.DptFaixa.length===0 || state.DptFaixa.some(lbl => {
             const fx = DPT_FAIXAS.find(f=>f.label===lbl);
@@ -534,7 +583,7 @@ function renderKPIs(){
         <div class="kpi"><div class="lab">Total Nota Fábrica</div><div class="val">${BRL(k.notaEntradaTotal)}</div></div>
         <div class="kpi"><div class="lab">Ticket Médio</div><div class="val">${BRL(k.ticketMedio)}</div></div>
 
-        <div class="kpi"><div class="lab">Lucro Bruto</div><div class="${lucroBrutoClass}">${BRL(k.lucroBruto)}</div></div>
+        <div class="kpi"><div class="lab">Lucro Bruto Total</div><div class="${lucroBrutoClass}">${BRL(k.lucroBruto)}</div></div>
         <div class="kpi"><div class="lab">Lucro Bruto Médio</div><div class="${lucroBrutoMedioClass}">${BRL(k.lucroBrutoMedio)}</div></div>
         <div class="kpi"><div class="lab">Lucro Líquido</div><div class="${lucroLiquidoClass}">${BRL(k.lucroLiquido)}</div></div>
         <div class="kpi"><div class="lab">Lucro Líquido Médio</div><div class="${lucroLiquidoMedioClass}">${BRL(k.lucroLiquidoMedio)}</div></div>
@@ -583,7 +632,7 @@ function renderTable(rows){
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${r.Vendedor||'—'}</td>
+            <td class="cell-vendedor" style="cursor:pointer; text-decoration:underline;">${r.Vendedor||'—'}</td>
             <td>${r.Loja||'—'}</td>
             <td>${r.Placa||'—'}</td>
             <td>${r.ModeloBase||'—'}</td>
@@ -601,7 +650,7 @@ function renderTable(rows){
 function initSorting(){
     const ths = document.querySelectorAll('#grid thead th.sortable');
     ths.forEach(th=>{
-        th.addEventListener('click', ()=>{
+        th.addEventListener('click', ()=> withStableScroll(()=>{
             const key = th.dataset.key, type = th.dataset.type;
             if(sortState.key===key){
                 sortState.dir = sortState.dir==='asc' ? 'desc':'asc';
@@ -613,10 +662,28 @@ function initSorting(){
             const icon = th.querySelector('.sort');
             icon.className = 'fa-solid ' + (sortState.dir==='asc' ? 'fa-sort-up':'fa-sort-down') + ' sort';
             renderTable(sortRows([...filtered]));
-        });
+        }));
     });
 }
 initSorting();
+
+/* ===== Seleção múltipla pelo NOME do vendedor (tabela) sem scroll ===== */
+function toggleVendorSelection(name){
+    if(!name || name==='—' || name==='Não informado') return;
+    const set = new Set(state.Vendedor);
+    if(set.has(name)) set.delete(name); else set.add(name);
+    state.Vendedor = [...set];
+    pillInstances.Vendedor.sync();
+    withStableScroll(()=> applyFilters());
+}
+document.querySelector('#grid tbody').addEventListener('click', (e)=>{
+    const cell = e.target.closest('td');
+    if(!cell) return;
+    if(cell.classList.contains('cell-vendedor')){
+        const name = (cell.textContent || '').trim();
+        toggleVendorSelection(name);
+    }
+});
 
 /* ===== Tooltip qtd/% ===== */
 function pctTooltip() {
@@ -633,9 +700,10 @@ function pctTooltip() {
     };
 }
 
-/* ===== Gráficos ===== */
+/* ===== Gráficos (com animation:false) ===== */
 function renderCharts(rows){
-    /* Loja: ORDENADO desc */
+    const commonOpts = { responsive:true, maintainAspectRatio:false, animation:false };
+
     const porLoja={}; rows.forEach(r=>{ const k=r.Loja||'Não informado'; porLoja[k]=(porLoja[k]||0)+1; });
     const lojaArr = Object.entries(porLoja).sort((a,b)=>b[1]-a[1]);
     const l1 = lojaArr.map(x=>x[0]);
@@ -644,8 +712,7 @@ function renderCharts(rows){
     charts.loja=new Chart(document.getElementById('lojaChart').getContext('2d'),{
         type:'bar',
         data:{labels:l1,datasets:[{label:'Vendas',data:d1,borderWidth:2,borderRadius:8}]},
-        options:{ responsive:true, maintainAspectRatio:false,
-            plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Vendas por Loja (ordenado)'} } }
+        options:{ ...commonOpts, plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Vendas por Loja'} } }
     });
 
     const porMod={}; rows.forEach(r=>{ const k=r.ModeloBase||'Não informado'; porMod[k]=(porMod[k]||0)+1; });
@@ -654,26 +721,21 @@ function renderCharts(rows){
     charts.modelo=new Chart(document.getElementById('modeloChart').getContext('2d'),{
         type:'doughnut',
         data:{labels:top.map(x=>x[0]), datasets:[{data:top.map(x=>x[1])}]},
-        options:{ responsive:true, maintainAspectRatio:false, cutout:'55%',
-            plugins:{ tooltip: pctTooltip(), title:{display:true, text:'Top 10 Modelos Mais Vendidos'} } }
+        options:{ ...commonOpts, cutout:'55%', plugins:{ tooltip: pctTooltip(), title:{display:true, text:'Top 10 Modelos Mais Vendidos'} } }
     });
 
-    /* Faixas de Dias: 0–30, 31–60, 61–90, 91–120, 121+ (gráfico com cores de semáforo) */
     const faixas = { '1–30':0, '31–60':0, '61–90':0, '91–120':0, '121+':0 };
     rows.forEach(r=>{
         const d = r['Dias de Estoque'];
-        if(!Number.isFinite(d) || d<=0) return;   // ignora <=0
+        if(!Number.isFinite(d) || d<=0) return;
         if(d<=30)       faixas['1–30']++;
         else if(d<=60)  faixas['31–60']++;
         else if(d<=90)  faixas['61–90']++;
         else if(d<=120) faixas['91–120']++;
         else            faixas['121+']++;
     });
-
-    // Paleta semáforo (verde forte → vermelho)
-    const bgSemaforo = ['#16a34a','#84cc16','#f59e0b','#f97316','#dc2626']; // green-600, lime-500, amber-500, orange-500, red-600
-    const bdSemaforo = ['#15803d','#65a30d','#d97706','#ea580c','#b91c1c']; // bordas mais escuras
-
+    const bgSemaforo = ['#16a34a','#84cc16','#f59e0b','#f97316','#dc2626'];
+    const bdSemaforo = ['#15803d','#65a30d','#d97706','#ea580c','#b91c1c'];
     if(charts.faixas) charts.faixas.destroy();
     charts.faixas=new Chart(document.getElementById('faixasEstoqueChart').getContext('2d'),{
         type:'bar',
@@ -689,16 +751,11 @@ function renderCharts(rows){
             }]
         },
         options:{ 
-            responsive:true, maintainAspectRatio:false,
-            plugins:{ 
-                legend:{display:false}, 
-                tooltip: pctTooltip(), 
-                title:{display:true, text:'Distribuição por Faixas de Dias de Estoque (Semáforo)'} 
-            } 
+            ...commonOpts,
+            plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Distribuição por Faixas de Dias de Estoque '} }
         }
     });
 
-    /* Vendedor: ORDENADO desc */
     const porVend={}; rows.forEach(r=>{ const k=r.Vendedor||'Não informado'; porVend[k]=(porVend[k]||0)+1; });
     const vendArr = Object.entries(porVend).sort((a,b)=>b[1]-a[1]);
     const l3 = vendArr.map(x=>x[0]);
@@ -707,11 +764,26 @@ function renderCharts(rows){
     charts.vendedor=new Chart(document.getElementById('vendedorChart').getContext('2d'),{
         type:'bar',
         data:{labels:l3,datasets:[{label:'Vendas',data:d3,borderWidth:2,borderRadius:8}]},
-        options:{ responsive:true, maintainAspectRatio:false,
-            plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Vendas por Vendedor (ordenado)'} } }
+        options:{ 
+            ...commonOpts,
+            plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Vendas por Vendedor'} },
+            onClick: (evt) => {
+                const points = charts.vendedor.getElementsAtEventForMode(evt, 'nearest', {intersect:true}, true);
+                if(!points || !points.length) return;
+                const idx = points[0].index;
+                const vendedor = charts.vendedor.data.labels[idx];
+                // clique com preservação estável de scroll
+                withStableScroll(()=> {
+                    const set = new Set(state.Vendedor);
+                    if(set.has(vendedor)) set.delete(vendedor); else set.add(vendedor);
+                    state.Vendedor = [...set];
+                    pillInstances.Vendedor.sync();
+                    applyFilters();
+                });
+            }
+        }
     });
 
-    /* AJUSTE: Top 10 "Vendedor que Recebeu" (troca) — ORDENADO desc */
     const porReceb={};
     rows.forEach(r=>{
         const k = (r.VendedorRecebeu && String(r.VendedorRecebeu).trim()) ? r.VendedorRecebeu : 'Não informado';
@@ -719,20 +791,16 @@ function renderCharts(rows){
     });
     const recebArr = Object.entries(porReceb)
         .filter(([k])=>k!=='Não informado')
-        .sort((a,b)=>b[1]-a[1]).slice(0,10);   // << de 5 para 10
-
+        .sort((a,b)=>b[1]-a[1]).slice(0,10);
     const l4 = recebArr.map(x=>x[0]);
     const d4 = recebArr.map(x=>x[1]);
-
     if(charts.vendRecebeu) charts.vendRecebeu.destroy();
     charts.vendRecebeu = new Chart(document.getElementById('vendedorRecebeuChart').getContext('2d'), {
         type:'bar',
         data:{ labels:l4, datasets:[{ label:'Qtde de trocas recebidas', data:d4, borderWidth:2, borderRadius:8 }]},
-        options:{ responsive:true, maintainAspectRatio:false,
-            plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Top 10 Vendedores que mais receberam carros (troca)'} } }
+        options:{ ...commonOpts, plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Top 10 Vendedores que mais receberam carros (troca)'} } }
     });
 }
 </script>
 </body>
-
 </html>
