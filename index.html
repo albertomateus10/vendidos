@@ -50,7 +50,7 @@
     .menu-actions{display:flex; gap:8px; padding:8px 10px}
     .menu-actions button{border:1px solid var(--border); background:#f9fbff; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:.85rem}
     .menu-actions button.apply{background:linear-gradient(135deg,var(--primary),var(--primary-2)); color:#fff; border:0}
-    .clear-btn{ border:1px solid var(--border); background:#fff; padding:8px 12px; border-radius:12px; font-weight:800; font-size:.85rem; cursor:pointer; }
+    .clear-btn{ border:1px solid var(--border); background:#fff; padding:8px 12px; border-radius:12px; font-weight:800; font-size:.85rem; cursor:pointer }
 
     .section{background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; margin-top:12px}
     .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:14px}
@@ -75,9 +75,9 @@
     th.active .sort{color:#2563eb}
     tr:hover td{background:#fafcff}
 
-    @media (max-width:1200px){.kpis{grid-template-columns:repeat(3,1fr)}}
-    @media (max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)} .charts{grid-template-columns:1fr}}
-    @media (max-width:680px){.kpis{grid-template-columns:1fr}}
+    /* >>> NOVO: célula de placa clicável para excluir/recuperar o carro <<< */
+    td.cell-placa{ cursor:pointer; text-decoration:underline; }
+    td.cell-placa:hover{ text-decoration:none; }
 </style>
 </head>
 <body>
@@ -162,7 +162,7 @@ function withStableScroll(fn){
     fn();
     requestAnimationFrame(()=>{ 
         window.scrollTo(x,y);
-        requestAnimationFrame(()=>{ window.scrollTo(x,y); }); // segunda passada garante após reflow/Chart.js
+        requestAnimationFrame(()=>{ window.scrollTo(x,y); });
     });
 }
 
@@ -237,6 +237,10 @@ function findCol(headers, aliases){
 let allData = [];
 let filtered = [];
 let charts = { loja:null, modelo:null, vendedor:null, faixas:null, vendRecebeu:null };
+
+/* >>> NOVO: set de placas excluídas <<< */
+const excludedPlates = new Set();
+
 const state = { search:'', Loja:[], Vendedor:[], Modelo:[], Tipo:[], Mes:[], ValorFaixa:[], DptFaixa:[] };
 const sortState = { key:null, type:null, dir:'desc' };
 
@@ -270,7 +274,7 @@ class MultiPill {
                 const x = window.pageXOffset, y = window.pageYOffset;
                 this.el.classList.toggle('open');
                 if(this.searchInput) this.searchInput.focus();
-                window.scrollTo(x,y); // abrir/fechar sem mexer no scroll
+                window.scrollTo(x,y);
             }
         });
         document.addEventListener('click',e=>{
@@ -311,7 +315,6 @@ class MultiPill {
             });
         };
 
-        // Limpar/Aplicar com preservação estável do scroll
         limpar.onclick=()=> withStableScroll(()=>{
             this.setter([]);
             this.sync();
@@ -325,7 +328,6 @@ class MultiPill {
             applyFilters();
         });
 
-        // Apenas alterar preview do texto (sem aplicar filtro a cada clique)
         list.addEventListener('click', (ev)=>{
             const input = ev.target.closest('input[type="checkbox"]');
             if(!input) return;
@@ -497,6 +499,8 @@ document.getElementById('clearAll').addEventListener('click', ()=>{
         Object.values(pillInstances).forEach(p=>{ p.setter([]); p.render(); p.sync(); });
         pillInstances.ValorFaixa.setOptions(VALOR_FAIXAS.map(f=>f.label), {keepOrder:true});
         pillInstances.DptFaixa.setOptions(DPT_FAIXAS.map(f=>f.label), {keepOrder:true});
+        /* >>> NOVO: limpa exclusões de placas ao limpar filtros <<< */
+        excludedPlates.clear();
         applyFilters();
     });
 });
@@ -509,14 +513,12 @@ function applyFilters(){
         const modOk  = state.Modelo.length===0 || state.Modelo.includes(r.ModeloBase);
         const tipoOk = state.Tipo.length===0 || state.Tipo.includes(r.Tipo);
 
-        // Valor (faixas)
         const v = +r['Valor Venda']||0;
         const valorOk = state.ValorFaixa.length===0 || state.ValorFaixa.some(lbl => {
             const fx = VALOR_FAIXAS.find(f=>f.label===lbl);
             return fx ? fx.test(v) : true;
         });
 
-        // DPT (faixas)
         const d = r['Dias de Estoque'];
         const dptOk = state.DptFaixa.length===0 || state.DptFaixa.some(lbl => {
             const fx = DPT_FAIXAS.find(f=>f.label===lbl);
@@ -526,7 +528,10 @@ function applyFilters(){
         const q = state.search;
         const qOk = !q || [ r['Descrição Modelo'], r.Placa, r.ModeloBase ].some(vv=> (vv||'').toString().toLowerCase().includes(q));
 
-        return lojaOk && vendOk && modOk && tipoOk && valorOk && dptOk && qOk;
+        /* >>> NOVO: descartar carros cuja placa foi clicada <<< */
+        const notExcluded = !excludedPlates.has(r.Placa);
+
+        return lojaOk && vendOk && modOk && tipoOk && valorOk && dptOk && qOk && notExcluded;
     });
     renderKPIs();
     renderTable(sortRows([...filtered]));
@@ -634,7 +639,7 @@ function renderTable(rows){
         tr.innerHTML = `
             <td class="cell-vendedor" style="cursor:pointer; text-decoration:underline;">${r.Vendedor||'—'}</td>
             <td>${r.Loja||'—'}</td>
-            <td>${r.Placa||'—'}</td>
+            <td class="cell-placa" title="Clique para desconsiderar/reconsiderar este carro">${r.Placa||'—'}</td>
             <td>${r.ModeloBase||'—'}</td>
             <td>${BRL(valor)}</td>
             <td>${BRL(r['Nota de Entrada']||0)}</td>
@@ -679,9 +684,22 @@ function toggleVendorSelection(name){
 document.querySelector('#grid tbody').addEventListener('click', (e)=>{
     const cell = e.target.closest('td');
     if(!cell) return;
+
     if(cell.classList.contains('cell-vendedor')){
         const name = (cell.textContent || '').trim();
         toggleVendorSelection(name);
+        return;
+    }
+
+    /* >>> NOVO: clique na PLACA para excluir/incluir apenas aquele carro <<< */
+    if(cell.classList.contains('cell-placa')){
+        const placa = (cell.textContent || '').trim();
+        withStableScroll(()=>{
+            if(excludedPlates.has(placa)) excludedPlates.delete(placa);
+            else excludedPlates.add(placa);
+            applyFilters();
+        });
+        return;
     }
 });
 
@@ -772,7 +790,6 @@ function renderCharts(rows){
                 if(!points || !points.length) return;
                 const idx = points[0].index;
                 const vendedor = charts.vendedor.data.labels[idx];
-                // clique com preservação estável de scroll
                 withStableScroll(()=> {
                     const set = new Set(state.Vendedor);
                     if(set.has(vendedor)) set.delete(vendedor); else set.add(vendedor);
