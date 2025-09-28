@@ -626,11 +626,15 @@ function calcKPIs(rows){
     const kms = rows.map(r=>r.KM).filter(v=>Number.isFinite(v) && v>0);
     const kmMedio = kms.length? kms.reduce((a,b)=>a+b,0)/kms.length : 0;
 
+    /* >>> NOVO: Custo médio baseado no Total Nota Fábrica <<< */
+    const custoMedioNota = n ? (notaEntradaTotal / n) : 0;
+
     return {
         n, valorTotal, notaEntradaTotal, custoTotal, ticketMedio,
         lucroBruto, lucroBrutoMedio, lucroLiquido, lucroLiquidoMedio,
         margemBrutaPercent, margemLiquidaPercent,
-        anoMedio, mediaDiasEstoque, kmMedio, ganhosIndiretosTotal
+        anoMedio, mediaDiasEstoque, kmMedio, ganhosIndiretosTotal,
+        custoMedioNota /* novo campo */
     };
 }
 function renderKPIs(){
@@ -646,6 +650,9 @@ function renderKPIs(){
         <div class="kpi"><div class="lab">Total de Vendas</div><div class="val">${NUM(k.n)}</div></div>
         <div class="kpi"><div class="lab">Valor Total Vendido</div><div class="val">${BRL(k.valorTotal)}</div></div>
         <div class="kpi"><div class="lab">Total Nota Fábrica</div><div class="val">${BRL(k.notaEntradaTotal)}</div></div>
+        <!-- NOVO KPI -->
+        <div class="kpi"><div class="lab">Custo Médio (Por Veículo)</div><div class="val">${BRL(k.custoMedioNota)}</div></div>
+
         <div class="kpi"><div class="lab">Ticket Médio</div><div class="val">${BRL(k.ticketMedio)}</div></div>
 
         <div class="kpi"><div class="lab">Lucro Bruto Total</div><div class="${lucroBrutoClass}">${BRL(k.lucroBruto)}</div></div>
