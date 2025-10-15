@@ -53,9 +53,25 @@
     .clear-btn{ border:1px solid var(--border); background:#fff; padding:8px 12px; border-radius:12px; font-weight:800; font-size:.85rem; cursor:pointer }
 
     .section{background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; margin-top:12px}
-    .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:14px}
-    .kpi{background:#fff; border:1px solid var(--border); border-radius:16px; padding:16px; position:relative; overflow:hidden}
-    .kpi::before{content:''; position:absolute; left:0; top:0; right:0; height:4px; background:linear-gradient(135deg,var(--primary),var(--primary-2))}
+
+    /* ====== KPI GROUPS ====== */
+    .kpi-groups{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+    @media (max-width: 1200px){ .kpi-groups{ grid-template-columns:1fr; } }
+    .kpi-group{
+        border:1px solid var(--border); border-radius:18px; padding:14px 14px 6px 14px; position:relative; background:#fff;
+        box-shadow:0 6px 16px rgba(2,6,23,.04);
+    }
+    .kpi-group::before{
+        content:''; position:absolute; left:0; right:0; top:0; height:4px; background:linear-gradient(135deg,var(--primary),var(--primary-2)); border-top-left-radius:18px; border-top-right-radius:18px;
+    }
+    .kpi-group .title{
+        font-weight:800; color:#0f172a; margin:2px 0 10px 0; font-size:1.05rem; display:flex; align-items:center; gap:8px;
+    }
+    .kpi-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+    @media (max-width: 720px){ .kpi-grid{ grid-template-columns:1fr; } }
+
+    .kpi{background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px; position:relative; overflow:hidden}
+    .kpi::before{content:''; position:absolute; left:0; top:0; right:0; height:3px; background:linear-gradient(135deg,var(--primary),var(--primary-2))}
     .kpi .lab{font-size:.78rem; color:#64748b; text-transform:uppercase; font-weight:800; letter-spacing:.4px}
     .kpi .val{font-size:1.55rem; font-weight:800; color:var(--primary)}
     .kpi .val.neg{ color:var(--danger); }
@@ -75,7 +91,6 @@
     th.active .sort{color:#2563eb}
     tr:hover td{background:#fafcff}
 
-    /* célula de placa clicável (excluir/reincluir) */
     td.cell-placa{ cursor:pointer; text-decoration:underline; }
     td.cell-placa:hover{ text-decoration:none; }
 </style>
@@ -104,9 +119,9 @@
 
     <div class="filters" id="filters"></div>
 
-    <!-- KPIs -->
+    <!-- KPIs AGRUPADOS -->
     <div class="section">
-        <div id="kpis" class="kpis"></div>
+        <div id="kpiGroups" class="kpi-groups"></div>
     </div>
 
     <!-- GRÁFICOS -->
@@ -116,8 +131,6 @@
             <div class="chart large"><canvas id="modeloChart"></canvas></div>
             <div class="chart"><canvas id="faixasEstoqueChart"></canvas></div>
             <div class="chart"><canvas id="vendedorRecebeuChart"></canvas></div>
-
-            <!-- AGORA: dois gráficos lado a lado: Vendas TOP10 e Margem TOP10 -->
             <div class="chart"><canvas id="vendedorChart"></canvas></div>
             <div class="chart"><canvas id="vendedorMargemChart"></canvas></div>
         </div>
@@ -158,7 +171,7 @@ const $ = s => document.querySelector(s);
 const BRL = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(+v||0);
 const NUM = v => new Intl.NumberFormat('pt-BR').format(+v||0);
 
-/* ===== Scroll estável (contra “pulo para cima”) ===== */
+/* ===== Scroll estável ===== */
 function withStableScroll(fn){
     const x = window.pageXOffset || 0;
     const y = window.pageYOffset || 0;
@@ -185,7 +198,6 @@ function parseDateExcel(v){
     }
     const d = new Date(v); return isNaN(+d)?null:d;
 }
-/* >>> extrai mês por padrão “/MM/” quando a célula é texto <<< */
 function monthNameFromCell(cell){
     const nomes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
     if(cell===null || cell===undefined || cell==='') return 'Não informado';
@@ -280,7 +292,7 @@ let allData = [];
 let filtered = [];
 let charts = { loja:null, modelo:null, vendedor:null, vendedorMargem:null, faixas:null, vendRecebeu:null };
 
-/* set de placas excluídas */
+/* placas excluídas */
 const excludedPlates = new Set();
 
 const state = { search:'', Loja:[], Vendedor:[], Modelo:[], Tipo:[], Mes:[], ValorFaixa:[], DptFaixa:[] };
@@ -397,7 +409,6 @@ const pillInstances = {
 };
 (function mountPills(){
     const holder = document.getElementById('filters');
-    /* Ordem visual: Mês à esquerda de Loja */
     ['Mes','Loja','Vendedor','Modelo','Tipo','ValorFaixa','DptFaixa'].forEach(k=>{
         holder.appendChild(pillInstances[k].el);
     });
@@ -472,23 +483,23 @@ function detectHeaderRow(mat){
 /* ===== Leitura das linhas ===== */
 function parseRows(headers, data){
     const idx = {
-        vendedor:  findCol(headers, ['Vendedor','VENDEDOR']),
-        vendRecebe:findCol(headers, ['Vendedor que Recebeu','VENDEDOR QUE RECEBEU','Vendedor que recebeu','Vendedor Recebeu']),
-        loja:      findCol(headers, ['Loja','LOJA','Pátio','Patio','PATIO']),
-        placa:     findCol(headers, ['PLACA USADO','Placa Usado','PLACA_USADO','PLACA USADA','Placa Usada','PLACA','Placa','Placa do Veículo','PLACA VEICULO','PLACA DO VEICULO','Placa Veículo']),
-        modelo:    findCol(headers, ['Descrição Modelo','Decrição Modelo','Modelo','MODELO','Descrição do Modelo']),
-        valor:     findCol(headers, ['Valor Venda','VALOR VENDA','Valor de Venda']),
-        custoTot:  findCol(headers, ['Custo Total Final','Custo Total','CUSTO TOTAL FINAL']),
-        notaEnt:   findCol(headers, ['Total Nota Fabrica','Total Nota Fábrica','Nota de Entrada','NOTA DE ENTRADA','Nota Entrada','NF Entrada','Valor Entrada']),
-        tipo:      findCol(headers, ['Tipo','TIPO','Tipo de venda']),
-        km:        findCol(headers, ['KM','Km','Quilometragem','KM_USADO']),
-        ano:       findCol(headers, ['Ano','ANO','Ano Modelo','Ano/Modelo','ANO MODELO']),
-        diasEst:   findCol(headers, ['DPT','Dias de Estoque','DIAS DE ESTOQUE','DiasEstoque','Dias_Estoque','Dias em Estoque']),
-        dataVend:  findCol(headers, ['Data Venda','DATA VENDA','Data de Venda','Data venda','Data','DATA']),
-        ganhosInd: findCol(headers, ['Ganhos Indiretos','GANHOS INDIRETOS','Ganho Indireto','GANHO INDIRETO'])
+        vendedor:   findCol(headers, ['Vendedor','VENDEDOR']),
+        vendRecebe: findCol(headers, ['Vendedor que Recebeu','VENDEDOR QUE RECEBEU','Vendedor que recebeu','Vendedor Recebeu']),
+        loja:       findCol(headers, ['Loja','LOJA','Pátio','Patio','PATIO','Empresa vendedora','EMPRESA VENDEDORA','Empresa Vendedora']),
+        placa:      findCol(headers, ['PLACA USADO','Placa Usado','PLACA_USADO','PLACA USADA','Placa Usada','PLACA','Placa','Placa do Veículo','PLACA VEICULO','PLACA DO VEICULO','Placa Veículo']),
+        modelo:     findCol(headers, ['Descrição Modelo','Decrição Modelo','Modelo','MODELO','Descrição do Modelo']),
+        valor:      findCol(headers, ['Valor Venda','VALOR VENDA','Valor de Venda']),
+        custoTot:   findCol(headers, ['Custo Total Final','Custo Total','CUSTO TOTAL FINAL']),
+        notaEnt:    findCol(headers, ['Total Nota Fabrica','Total Nota Fábrica','Nota de Entrada','NOTA DE ENTRADA','Nota Entrada','NF Entrada','Valor Entrada']),
+        tipo:       findCol(headers, ['Tipo','TIPO','Tipo de venda']),
+        km:         findCol(headers, ['KM','Km','Quilometragem','KM_USADO']),
+        ano:        findCol(headers, ['Ano','ANO','Ano Modelo','Ano/Modelo','ANO MODELO']),
+        diasEst:    findCol(headers, ['DPT','Dias de Estoque','DIAS DE ESTOQUE','DiasEstoque','Dias_Estoque','Dias em Estoque']),
+        dataVend:   findCol(headers, ['Data Venda','DATA VENDA','Data de Venda','Data venda','Data','DATA']),
+        ganhosInd:  findCol(headers, ['Ganhos Indiretos','GANHOS INDIRETOS','Ganho Indireto','GANHO INDIRETO']),
+        margemFI:   findCol(headers, ['Margem + F&I','Margem + FI','Margem F&I','MARGEM + F&I','MARGEM + FI'])
     };
-
-    if(idx.placa<0){ showWarn('Coluna de placa não encontrada. Procuro por "PLACA USADO", "PLACA", etc.'); }
+    if (idx.margemFI < 0 && headers.length > 10) idx.margemFI = 10;
 
     allData = data.map(r=>{
         const get = (i)=> i>=0 ? r[i] : undefined;
@@ -496,7 +507,6 @@ function parseRows(headers, data){
         const dptRaw = toNumberBR(get(idx.diasEst));
         const dptNorm = Number.isFinite(dptRaw) ? (dptRaw < 0 ? null : dptRaw) : null;
 
-        // MÊS baseado na “Data venda”
         const dataVendaCell = get(idx.dataVend);
         const mesCap = monthNameFromCell(dataVendaCell);
 
@@ -521,26 +531,22 @@ function parseRows(headers, data){
             Ano: normalizeYear(get(idx.ano)),
             'Dias de Estoque': dptNorm,
             MesNome: mesCap,
-            'Ganhos Indiretos': toNumberBR(get(idx.ganhosInd))
+            'Ganhos Indiretos': toNumberBR(get(idx.ganhosInd)),
+            'Margem + F&I': toNumberBR(get(idx.margemFI))
         };
     });
 
-    /* opções dos filtros dinâmicos */
     pillInstances.Loja.setOptions(allData.map(x=>x.Loja));
     pillInstances.Vendedor.setOptions(allData.map(x=>x.Vendedor));
     pillInstances.Modelo.setOptions(allData.map(x=>x.ModeloBase));
     pillInstances.Tipo.setOptions(allData.map(x=>x.Tipo));
 
-    /* Mês: ordena Janeiro–Dezembro mas lista só os existentes */
     const orderMes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
     const mesesUnicos = [...new Set(allData
         .map(x=>x.MesNome)
         .filter(m=>m && m!=='Não informado'))]
         .sort((a,b)=> orderMes.indexOf(a.toLowerCase()) - orderMes.indexOf(b.toLowerCase()));
     pillInstances.Mes.setOptions(mesesUnicos, {keepOrder:true});
-
-    pillInstances.ValorFaixa.setOptions(VALOR_FAIXAS.map(f=>f.label), {keepOrder:true});
-    pillInstances.DptFaixa.setOptions(DPT_FAIXAS.map(f=>f.label), {keepOrder:true});
 
     applyFilters();
 }
@@ -552,8 +558,6 @@ document.getElementById('clearAll').addEventListener('click', ()=>{
         state.search=''; document.getElementById('q').value='';
         state.Loja=[]; state.Vendedor=[]; state.Modelo=[]; state.Tipo=[]; state.Mes=[]; state.ValorFaixa=[]; state.DptFaixa=[];
         Object.values(pillInstances).forEach(p=>{ p.setter([]); p.render(); p.sync(); });
-        pillInstances.ValorFaixa.setOptions(VALOR_FAIXAS.map(f=>f.label), {keepOrder:true});
-        pillInstances.DptFaixa.setOptions(DPT_FAIXAS.map(f=>f.label), {keepOrder:true});
         const orderMes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
         const mesesUnicos = [...new Set(allData
             .map(x=>x.MesNome)
@@ -576,14 +580,25 @@ function applyFilters(){
 
         const v = +r['Valor Venda']||0;
         const valorOk = state.ValorFaixa.length===0 || state.ValorFaixa.some(lbl => {
-            const fx = VALOR_FAIXAS.find(f=>f.label===lbl);
-            return fx ? fx.test(v) : true;
+            const mapFx = {
+              'R$ 0,01–70.000,00': v=>v>0 && v<=70000,
+              'R$ 70.000,01–90.000,00': v=>v>70000 && v<=90000,
+              'R$ 90.000,01–110.000,00': v=>v>90000 && v<=110000,
+              'R$ 110.000,01+': v=>v>110000
+            };
+            return (mapFx[lbl]||(()=>true))(v);
         });
 
         const d = r['Dias de Estoque'];
         const dptOk = state.DptFaixa.length===0 || state.DptFaixa.some(lbl => {
-            const fx = DPT_FAIXAS.find(f=>f.label===lbl);
-            return fx ? fx.test(d) : true;
+            const mapFx = {
+              '0–30': d=>Number.isFinite(d)&&d>=0&&d<=30,
+              '31–60': d=>Number.isFinite(d)&&d>=31&&d<=60,
+              '61–90': d=>Number.isFinite(d)&&d>=61&&d<=90,
+              '91–120': d=>Number.isFinite(d)&&d>=91&&d<=120,
+              '121+': d=>Number.isFinite(d)&&d>=121
+            };
+            return (mapFx[lbl]||(()=>true))(d);
         });
 
         const q = state.search;
@@ -593,18 +608,21 @@ function applyFilters(){
 
         return lojaOk && vendOk && modOk && tipoOk && mesOk && valorOk && dptOk && qOk && notExcluded;
     });
-    renderKPIs();
+    renderKpiGroups();
     renderTable(sortRows([...filtered]));
     renderCharts(filtered);
 }
 
-/* ===== KPIs ===== */
+/* ===== KPIs (cálculo) ===== */
 function calcKPIs(rows){
     const n = rows.length;
     const valorTotal = rows.reduce((s,r)=>s+(+r['Valor Venda']||0),0);
     const notaEntradaTotal = rows.reduce((s,r)=>s+(+r['Nota de Entrada']||0),0);
     const custoTotal = rows.reduce((s,r)=>s+(+r['Custo Total Final']||0),0);
     const ganhosIndiretosTotal = rows.reduce((s,r)=>s+(+r['Ganhos Indiretos']||0),0);
+
+    const margemFI_sum = rows.reduce((s,r)=>s+(+r['Margem + F&I']||0),0);
+    const margemFI_media = n ? (margemFI_sum / n) : 0;
 
     const ticketMedio = n? valorTotal/n : 0;
 
@@ -626,7 +644,6 @@ function calcKPIs(rows){
     const kms = rows.map(r=>r.KM).filter(v=>Number.isFinite(v) && v>0);
     const kmMedio = kms.length? kms.reduce((a,b)=>a+b,0)/kms.length : 0;
 
-    /* >>> NOVO: Custo médio baseado no Total Nota Fábrica <<< */
     const custoMedioNota = n ? (notaEntradaTotal / n) : 0;
 
     return {
@@ -634,10 +651,12 @@ function calcKPIs(rows){
         lucroBruto, lucroBrutoMedio, lucroLiquido, lucroLiquidoMedio,
         margemBrutaPercent, margemLiquidaPercent,
         anoMedio, mediaDiasEstoque, kmMedio, ganhosIndiretosTotal,
-        custoMedioNota /* novo campo */
+        custoMedioNota, margemFI_media
     };
 }
-function renderKPIs(){
+
+/* ===== KPIs AGRUPADOS (render) ===== */
+function renderKpiGroups(){
     const k = calcKPIs(filtered);
     const lucroBrutoClass        = k.lucroBruto < 0 ? 'val neg' : 'val';
     const lucroBrutoMedioClass   = k.lucroBrutoMedio < 0 ? 'val neg' : 'val';
@@ -645,36 +664,60 @@ function renderKPIs(){
     const lucroLiquidoMedioClass = k.lucroLiquidoMedio < 0 ? 'val neg' : 'val';
     const margemBrutaClass       = k.margemBrutaPercent < 0 ? 'val neg' : 'val';
     const margemLiquidaClass     = k.margemLiquidaPercent < 0 ? 'val neg' : 'val';
+    const margemFIClass          = k.margemFI_media < 0 ? 'val neg' : 'val';
 
-    const html = `
-        <div class="kpi"><div class="lab">Total de Vendas</div><div class="val">${NUM(k.n)}</div></div>
-        <div class="kpi"><div class="lab">Valor Total Vendido</div><div class="val">${BRL(k.valorTotal)}</div></div>
-        <div class="kpi"><div class="lab">Total Nota Fábrica</div><div class="val">${BRL(k.notaEntradaTotal)}</div></div>
-        <!-- NOVO KPI -->
-        <div class="kpi"><div class="lab">Custo Médio (Por Veículo)</div><div class="val">${BRL(k.custoMedioNota)}</div></div>
+    const gruposHTML = `
+      <!-- TOTAIS -->
+      <div class="kpi-group">
+        <div class="title"><i class="fa-solid fa-sack-dollar"></i> Totais</div>
+        <div class="kpi-grid">
+            <div class="kpi"><div class="lab">Total de Vendas</div><div class="val">${NUM(k.n)}</div></div>
+            <div class="kpi"><div class="lab">Valor Total Vendido</div><div class="val">${BRL(k.valorTotal)}</div></div>
+            <div class="kpi"><div class="lab">Total Nota Fábrica</div><div class="val">${BRL(k.notaEntradaTotal)}</div></div>
+            <div class="kpi"><div class="lab">Lucro Bruto Total</div><div class="${lucroBrutoClass}">${BRL(k.lucroBruto)}</div></div>
+            <div class="kpi"><div class="lab">Lucro Líquido</div><div class="${lucroLiquidoClass}">${BRL(k.lucroLiquido)}</div></div>
+            <div class="kpi"><div class="lab">Ganhos Indiretos</div><div class="val">${BRL(k.ganhosIndiretosTotal)}</div></div>
+        </div>
+      </div>
 
-        <div class="kpi"><div class="lab">Ticket Médio</div><div class="val">${BRL(k.ticketMedio)}</div></div>
+      <!-- MÉDIAS -->
+      <div class="kpi-group">
+        <div class="title"><i class="fa-solid fa-chart-line"></i> Médias</div>
+        <div class="kpi-grid">
+            <div class="kpi"><div class="lab">Ticket Médio (custo)</div><div class="val">${BRL(k.custoMedioNota)}</div></div>
+            <div class="kpi"><div class="lab">Ticket Médio (venda)</div><div class="val">${BRL(k.ticketMedio)}</div></div>
+            <div class="kpi"><div class="lab">Lucro Bruto Médio</div><div class="${lucroBrutoMedioClass}">${BRL(k.lucroBrutoMedio)}</div></div>
+            <div class="kpi"><div class="lab">Lucro Líquido Médio</div><div class="${lucroLiquidoMedioClass}">${BRL(k.lucroLiquidoMedio)}</div></div>
+        </div>
+      </div>
 
-        <div class="kpi"><div class="lab">Lucro Bruto Total</div><div class="${lucroBrutoClass}">${BRL(k.lucroBruto)}</div></div>
-        <div class="kpi"><div class="lab">Lucro Bruto Médio</div><div class="${lucroBrutoMedioClass}">${BRL(k.lucroBrutoMedio)}</div></div>
-        <div class="kpi"><div class="lab">Lucro Líquido</div><div class="${lucroLiquidoClass}">${BRL(k.lucroLiquido)}</div></div>
-        <div class="kpi"><div class="lab">Lucro Líquido Médio</div><div class="${lucroLiquidoMedioClass}">${BRL(k.lucroLiquidoMedio)}</div></div>
+      <!-- PERCENTUAIS -->
+      <div class="kpi-group">
+        <div class="title"><i class="fa-solid fa-percent"></i> Percentuais</div>
+        <div class="kpi-grid">
+            <div class="kpi"><div class="lab">Lucro Bruto %</div><div class="${margemBrutaClass}">${k.margemBrutaPercent.toFixed(2)}%</div></div>
+            <div class="kpi"><div class="lab">Lucro Líquido NBS %</div><div class="${margemLiquidaClass}">${k.margemLiquidaPercent.toFixed(2)}%</div></div>
+            <div class="kpi"><div class="lab">Lucro Líquido NBS % + F&I</div><div class="${margemFIClass}">${k.margemFI_media.toFixed(2)}%</div></div>
+        </div>
+      </div>
 
-        <div class="kpi"><div class="lab">Lucro Bruto %</div><div class="${margemBrutaClass}">${k.margemBrutaPercent.toFixed(2)}%</div></div>
-        <div class="kpi"><div class="lab">Lucro Líquido NBS %</div><div class="${margemLiquidaClass}">${k.margemLiquidaPercent.toFixed(2)}%</div></div>
-        <div class="kpi"><div class="lab">Ano Médio</div><div class="val">${k.anoMedio? Math.round(k.anoMedio): '—'}</div></div>
-        <div class="kpi"><div class="lab">Média Dias de Estoque</div><div class="val">${Number.isFinite(k.mediaDiasEstoque)? k.mediaDiasEstoque.toFixed(1): '0'}</div></div>
-        <div class="kpi"><div class="lab">KM Médio</div><div class="val">${k.kmMedio? NUM(Math.round(k.kmMedio)) : '—'}</div></div>
-        <div class="kpi"><div class="lab">Ganhos Indiretos</div><div class="val">${BRL(k.ganhosIndiretosTotal)}</div></div>
+      <!-- ESTOQUE / PRODUTO -->
+      <div class="kpi-group">
+        <div class="title"><i class="fa-solid fa-warehouse"></i> Estoque/Produto</div>
+        <div class="kpi-grid">
+            <div class="kpi"><div class="lab">Giro de estoque (dias)</div><div class="val">${Number.isFinite(k.mediaDiasEstoque)? k.mediaDiasEstoque.toFixed(1): '0'}</div></div>
+            <div class="kpi"><div class="lab">KM Médio</div><div class="val">${k.kmMedio? NUM(Math.round(k.kmMedio)) : '—'}</div></div>
+            <div class="kpi"><div class="lab">Ano Médio</div><div class="val">${k.anoMedio? Math.round(k.anoMedio): '—'}</div></div>
+        </div>
+      </div>
     `;
-    document.getElementById('kpis').innerHTML = html;
+
+    document.getElementById('kpiGroups').innerHTML = gruposHTML;
 }
 
 /* ===== Ordenação/Tabela ===== */
 function rowMargin(r){
-    const valor = +r['Valor Venda']||0;
-    const custo = +r['Custo Total Final']||0;
-    return valor>0 ? ((valor - (custo||0))/valor)*100 : 0;
+    return Number(r['Margem + F&I']) || 0;
 }
 const collator = new Intl.Collator('pt-BR', {numeric:true, sensitivity:'base'});
 function sortRows(rows){
@@ -697,7 +740,7 @@ function renderTable(rows){
     for(const r of rows){
         const valor = +r['Valor Venda']||0;
         const custo = +r['Custo Total Final']||0;
-        const margem = rowMargin(r);
+        const margemPct = rowMargin(r);
         const anoStr = Number.isFinite(r.Ano) ? String(r.Ano).padStart(4,'0') : '—';
         const dpt = r['Dias de Estoque'];
         const dptStr = Number.isFinite(dpt) ? NUM(dpt) : 'N/A';
@@ -711,7 +754,7 @@ function renderTable(rows){
             <td>${BRL(valor)}</td>
             <td>${BRL(r['Nota de Entrada']||0)}</td>
             <td>${BRL(custo)}</td>
-            <td>${isFinite(margem)? margem.toFixed(2)+'%':'—'}</td>
+            <td>${isFinite(margemPct)? margemPct.toFixed(2)+'%':'—'}</td>
             <td>${dptStr}</td>
             <td>${r.KM? NUM(r.KM): '—'}</td>
             <td>${anoStr}</td>
@@ -739,7 +782,7 @@ function initSorting(){
 }
 initSorting();
 
-/* seleção múltipla pelo nome do vendedor (tabela) e exclusão por placa */
+/* seleção pelo vendedor e exclusão por placa */
 function toggleVendorSelection(name){
     if(!name || name==='—' || name==='Não informado') return;
     const set = new Set(state.Vendedor);
@@ -783,7 +826,6 @@ function pctTooltip() {
         }
     };
 }
-/* tooltip para margem média (mostra % e nº de vendas do vendedor) */
 function margemTooltip(vendasPorVendedor){
     return {
         callbacks:{
@@ -885,11 +927,11 @@ function renderCharts(rows){
         }
     });
 
-    /* Margem média por vendedor — TOP 10 */
+    /* Margem média por vendedor — baseada na coluna K */
     const margemAgg = {};
     rows.forEach(r=>{
         const vend = r.Vendedor || 'Não informado';
-        const m = rowMargin(r);
+        const m = Number(r['Margem + F&I']) || 0;
         if(!Number.isFinite(m)) return;
         if(!margemAgg[vend]) margemAgg[vend] = {sum:0, n:0};
         margemAgg[vend].sum += m;
@@ -902,7 +944,6 @@ function renderCharts(rows){
         .slice(0,10);
     const lM = avgArr.map(x=>x[0]);
     const dM = avgArr.map(x=> Number(x[1].toFixed(2)));
-    // mapa auxiliar vendedor->qtd vendas para tooltip
     const mapQtd = Object.fromEntries(avgArr.map(([v, , n])=>[v,n]));
 
     if(charts.vendedorMargem) charts.vendedorMargem.destroy();
