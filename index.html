@@ -83,7 +83,7 @@
 
     .table{overflow:auto}
     table{width:100%; border-collapse:collapse; font-size:.9rem}
-    th,td{padding:10px 12px; border-bottom:1px solid var(--border)}
+    th,td{padding:10px 12px; border-bottom:1px solid var(--border")}
     th{position:sticky; top:0; background:#f5f9ff; text-align:left; user-select:none; white-space:nowrap}
     th.sortable{cursor:pointer}
     th .sort{margin-left:6px; color:#64748b}
@@ -496,10 +496,8 @@ function parseRows(headers, data){
         ano:        findCol(headers, ['Ano','ANO','Ano Modelo','Ano/Modelo','ANO MODELO']),
         diasEst:    findCol(headers, ['DPT','Dias de Estoque','DIAS DE ESTOQUE','DiasEstoque','Dias_Estoque','Dias em Estoque']),
         dataVend:   findCol(headers, ['Data Venda','DATA VENDA','Data de Venda','Data venda','Data','DATA']),
-        ganhosInd:  findCol(headers, ['Ganhos Indiretos','GANHOS INDIRETOS','Ganho Indireto','GANHO INDIRETO']),
-        margemFI:   findCol(headers, ['Margem + F&I','Margem + FI','Margem F&I','MARGEM + F&I','MARGEM + FI'])
+        ganhosInd:  findCol(headers, ['Ganhos Indiretos','GANHOS INDIRETOS','Ganho Indireto','GANHO INDIRETO'])
     };
-    if (idx.margemFI < 0 && headers.length > 10) idx.margemFI = 10;
 
     allData = data.map(r=>{
         const get = (i)=> i>=0 ? r[i] : undefined;
@@ -531,8 +529,7 @@ function parseRows(headers, data){
             Ano: normalizeYear(get(idx.ano)),
             'Dias de Estoque': dptNorm,
             MesNome: mesCap,
-            'Ganhos Indiretos': toNumberBR(get(idx.ganhosInd)),
-            'Margem + F&I': toNumberBR(get(idx.margemFI))
+            'Ganhos Indiretos': toNumberBR(get(idx.ganhosInd))
         };
     });
 
@@ -621,9 +618,6 @@ function calcKPIs(rows){
     const custoTotal = rows.reduce((s,r)=>s+(+r['Custo Total Final']||0),0);
     const ganhosIndiretosTotal = rows.reduce((s,r)=>s+(+r['Ganhos Indiretos']||0),0);
 
-    const margemFI_sum = rows.reduce((s,r)=>s+(+r['Margem + F&I']||0),0);
-    const margemFI_media = n ? (margemFI_sum / n) : 0;
-
     const ticketMedio = n? valorTotal/n : 0;
 
     const lucroBruto = valorTotal - notaEntradaTotal;
@@ -651,7 +645,7 @@ function calcKPIs(rows){
         lucroBruto, lucroBrutoMedio, lucroLiquido, lucroLiquidoMedio,
         margemBrutaPercent, margemLiquidaPercent,
         anoMedio, mediaDiasEstoque, kmMedio, ganhosIndiretosTotal,
-        custoMedioNota, margemFI_media
+        custoMedioNota
     };
 }
 
@@ -664,7 +658,6 @@ function renderKpiGroups(){
     const lucroLiquidoMedioClass = k.lucroLiquidoMedio < 0 ? 'val neg' : 'val';
     const margemBrutaClass       = k.margemBrutaPercent < 0 ? 'val neg' : 'val';
     const margemLiquidaClass     = k.margemLiquidaPercent < 0 ? 'val neg' : 'val';
-    const margemFIClass          = k.margemFI_media < 0 ? 'val neg' : 'val';
 
     const gruposHTML = `
       <!-- TOTAIS -->
@@ -697,7 +690,6 @@ function renderKpiGroups(){
         <div class="kpi-grid">
             <div class="kpi"><div class="lab">Lucro Bruto %</div><div class="${margemBrutaClass}">${k.margemBrutaPercent.toFixed(2)}%</div></div>
             <div class="kpi"><div class="lab">Lucro Líquido NBS %</div><div class="${margemLiquidaClass}">${k.margemLiquidaPercent.toFixed(2)}%</div></div>
-            <div class="kpi"><div class="lab">Lucro Líquido NBS % + F&I</div><div class="${margemFIClass}">${k.margemFI_media.toFixed(2)}%</div></div>
         </div>
       </div>
 
@@ -716,8 +708,11 @@ function renderKpiGroups(){
 }
 
 /* ===== Ordenação/Tabela ===== */
-function rowMargin(r){
-    return Number(r['Margem + F&I']) || 0;
+function marginPercent(r){
+    const v = Number(r['Valor Venda']) || 0;
+    const c = Number(r['Custo Total Final']) || 0;
+    if(v <= 0) return 0;
+    return ((v - c) / v) * 100;
 }
 const collator = new Intl.Collator('pt-BR', {numeric:true, sensitivity:'base'});
 function sortRows(rows){
@@ -725,7 +720,7 @@ function sortRows(rows){
     const key = sortState.key, type = sortState.type, dir = sortState.dir==='asc'?1:-1;
     return rows.sort((a,b)=>{
         let va, vb;
-        if(key==='Margem'){ va=rowMargin(a); vb=rowMargin(b); }
+        if(key==='Margem'){ va=marginPercent(a); vb=marginPercent(b); }
         else { va=a[key]; vb=b[key]; }
         if(type==='num'){
             va = Number(va)||0; vb = Number(vb)||0;
@@ -740,7 +735,7 @@ function renderTable(rows){
     for(const r of rows){
         const valor = +r['Valor Venda']||0;
         const custo = +r['Custo Total Final']||0;
-        const margemPct = rowMargin(r);
+        const margemPct = marginPercent(r);
         const anoStr = Number.isFinite(r.Ano) ? String(r.Ano).padStart(4,'0') : '—';
         const dpt = r['Dias de Estoque'];
         const dptStr = Number.isFinite(dpt) ? NUM(dpt) : 'N/A';
@@ -927,12 +922,14 @@ function renderCharts(rows){
         }
     });
 
-    /* Margem média por vendedor — baseada na coluna K */
+    /* Margem média por vendedor — agora calculada (venda - custo)/venda */
     const margemAgg = {};
     rows.forEach(r=>{
         const vend = r.Vendedor || 'Não informado';
-        const m = Number(r['Margem + F&I']) || 0;
-        if(!Number.isFinite(m)) return;
+        const v = Number(r['Valor Venda']) || 0;
+        const c = Number(r['Custo Total Final']) || 0;
+        if(v <= 0) return;
+        const m = ((v - c) / v) * 100;
         if(!margemAgg[vend]) margemAgg[vend] = {sum:0, n:0};
         margemAgg[vend].sum += m;
         margemAgg[vend].n += 1;
