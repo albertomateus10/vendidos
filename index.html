@@ -9,7 +9,7 @@
 <style>
     :root{
         --primary:#1e40af; --primary-2:#3b82f6; --border:#dbeafe; --ink:#0f172a; --soft:#f8fbff;
-        --shadow:0 10px 24px rgba(30,64,175,.15); --danger:#dc2626; --warn:#f59e0b;
+        --shadow:0 10px 24px rgba(2,6,23,.10); --danger:#dc2626; --warn:#f59e0b; --ok:#16a34a;
     }
     *{box-sizing:border-box}
     html,body{scroll-behavior:auto}
@@ -18,6 +18,25 @@
     .header{display:flex; align-items:center; gap:14px; margin-bottom:6px}
     .header h1{margin:0; font-size:28px; font-weight:800; background:linear-gradient(135deg,var(--primary),var(--primary-2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent}
     .sub{color:#64748b; margin:0 0 16px}
+
+    /* Storytelling */
+    .insights{ margin:14px 0 18px; }
+    .insights-title{ display:flex; align-items:center; gap:10px; font-weight:900; font-size:1.05rem; color:#0f172a; margin:0 0 10px; }
+    .insights-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    @media (max-width:1200px){ .insights-grid{ grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:720px){ .insights-grid{ grid-template-columns:1fr; } }
+    .insight-card{
+        border:1px solid var(--border); border-radius:14px; padding:12px 12px; background:#fff;
+        box-shadow:0 8px 20px rgba(2,6,23,.05); display:flex; gap:10px; align-items:flex-start; min-height:64px;
+    }
+    .insight-ico{ font-size:18px; color:var(--primary); padding:8px; border-radius:10px; background:linear-gradient(135deg,#eff6ff,#f8fbff); }
+    .insight-body{ display:flex; flex-direction:column; gap:4px; }
+    .insight-head{ font-size:.82rem; color:#64748b; text-transform:uppercase; font-weight:800; letter-spacing:.3px }
+    .insight-txt{ font-size:.98rem; font-weight:700; color:#111827; line-height:1.25 }
+    .trend{ font-weight:900; }
+    .trend.up{ color:var(--ok); }
+    .trend.down{ color:var(--danger); }
+    .muted{ color:#6b7280; font-weight:600; }
 
     .alert{display:none; border-radius:12px; padding:10px 12px; margin:10px 0; font-size:.9rem}
     .alert.show{display:block}
@@ -54,7 +73,7 @@
 
     .section{background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; margin-top:12px}
 
-    /* ====== KPI GROUPS ====== */
+    /* KPIs */
     .kpi-groups{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
     @media (max-width: 1200px){ .kpi-groups{ grid-template-columns:1fr; } }
     .kpi-group{
@@ -78,7 +97,6 @@
 
     .charts{display:grid; grid-template-columns:repeat(2,1fr); gap:16px}
     .chart{height:360px}
-    .chart.wide{grid-column:1 / -1}
     .chart.large{height:420px}
 
     .table{overflow:auto}
@@ -100,7 +118,12 @@
     <div class="header">
         <h1><i class="fa-solid fa-chart-line"></i> Vendas</h1>
     </div>
-    <p class="sub"></p>
+
+    <!-- STORYTELLING & INSIGHTS -->
+    <div class="insights">
+        <div class="insights-title"><i class="fa-solid fa-lightbulb"></i> Storytelling & Insights</div>
+        <div id="insightsGrid" class="insights-grid"></div>
+    </div>
 
     <div id="alertError" class="alert error"><span class="msg"></span><span class="close" onclick="this.parentElement.classList.remove('show')">✕</span></div>
     <div id="alertWarn" class="alert warn"><span class="msg"></span><span class="close" onclick="this.parentElement.classList.remove('show')">✕</span></div>
@@ -170,6 +193,7 @@ function showWarn(msg){ const el=document.getElementById('alertWarn'); el.queryS
 const $ = s => document.querySelector(s);
 const BRL = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(+v||0);
 const NUM = v => new Intl.NumberFormat('pt-BR').format(+v||0);
+const PCT = v => (Number.isFinite(v)? v.toFixed(2).replace('.',',') : '—') + '%';
 
 /* ===== Scroll estável ===== */
 function withStableScroll(fn){
@@ -496,7 +520,14 @@ function parseRows(headers, data){
         ano:        findCol(headers, ['Ano','ANO','Ano Modelo','Ano/Modelo','ANO MODELO']),
         diasEst:    findCol(headers, ['DPT','Dias de Estoque','DIAS DE ESTOQUE','DiasEstoque','Dias_Estoque','Dias em Estoque']),
         dataVend:   findCol(headers, ['Data Venda','DATA VENDA','Data de Venda','Data venda','Data','DATA']),
-        ganhosInd:  findCol(headers, ['Ganhos Indiretos','GANHOS INDIRETOS','Ganho Indireto','GANHO INDIRETO'])
+        ganhosInd:  findCol(headers, ['Ganhos Indiretos','GANHOS INDIRETOS','Ganho Indireto','GANHO INDIRETO']),
+        /* SUPORTE À COR EXTERNA */
+        cor:        findCol(headers, [
+                        'Cor Externa','COR EXTERNA',
+                        'Cor','COR',
+                        'Cor Veículo','Cor do Veículo',
+                        'Cor Veiculo','Cor do Veiculo'
+                    ])
     };
 
     allData = data.map(r=>{
@@ -529,7 +560,8 @@ function parseRows(headers, data){
             Ano: normalizeYear(get(idx.ano)),
             'Dias de Estoque': dptNorm,
             MesNome: mesCap,
-            'Ganhos Indiretos': toNumberBR(get(idx.ganhosInd))
+            'Ganhos Indiretos': toNumberBR(get(idx.ganhosInd)),
+            Cor: (get(idx.cor) ?? 'Não informado')
         };
     });
 
@@ -605,6 +637,7 @@ function applyFilters(){
 
         return lojaOk && vendOk && modOk && tipoOk && mesOk && valorOk && dptOk && qOk && notExcluded;
     });
+    renderInsights(filtered);     /* <<< STORYTELLING ATUALIZA JUNTO */
     renderKpiGroups();
     renderTable(sortRows([...filtered]));
     renderCharts(filtered);
@@ -640,13 +673,141 @@ function calcKPIs(rows){
 
     const custoMedioNota = n ? (notaEntradaTotal / n) : 0;
 
+    /* Cor mais vendida (moda) */
+    const coresCount = {};
+    rows.forEach(r=>{
+        const c = (r.Cor ?? '').toString().trim();
+        if(!c) return;
+        const key = c;
+        coresCount[key] = (coresCount[key] || 0) + 1;
+    });
+    const corMaisVendida = Object.entries(coresCount).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
+
     return {
         n, valorTotal, notaEntradaTotal, custoTotal, ticketMedio,
         lucroBruto, lucroBrutoMedio, lucroLiquido, lucroLiquidoMedio,
         margemBrutaPercent, margemLiquidaPercent,
         anoMedio, mediaDiasEstoque, kmMedio, ganhosIndiretosTotal,
-        custoMedioNota
+        custoMedioNota,
+        corMaisVendida
     };
+}
+
+/* ===== STORYTELLING & INSIGHTS ===== */
+function renderInsights(rows){
+    const grid = document.getElementById('insightsGrid');
+    grid.innerHTML = '';
+    const n = rows.length;
+
+    if(!n){
+        grid.innerHTML = `
+            <div class="insight-card">
+                <div class="insight-ico"><i class="fa-solid fa-circle-info"></i></div>
+                <div class="insight-body">
+                    <div class="insight-head">Sem dados no filtro</div>
+                    <div class="insight-txt muted">Ajuste os filtros para ver os principais insights de vendas.</div>
+                </div>
+            </div>`;
+        return;
+    }
+
+    const k = calcKPIs(rows);
+
+    // baseline da base completa para comparação (ticket médio)
+    const base = calcKPIs(allData && allData.length ? allData : rows);
+    const deltaTicket = base.ticketMedio ? ((k.ticketMedio/base.ticketMedio)-1)*100 : 0;
+    const trendClass = deltaTicket >= 0 ? 'up' : 'down';
+    const trendIcon = deltaTicket >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
+
+    // Top modelo
+    const modCount = {};
+    rows.forEach(r => { const m=r.ModeloBase||'Não informado'; modCount[m]=(modCount[m]||0)+1; });
+    const topModelo = Object.entries(modCount).sort((a,b)=>b[1]-a[1])[0];
+
+    // Top loja
+    const lojaCount = {};
+    rows.forEach(r => { const l=r.Loja||'Não informado'; lojaCount[l]=(lojaCount[l]||0)+1; });
+    const topLoja = Object.entries(lojaCount).sort((a,b)=>b[1]-a[1])[0];
+
+    // Vendedor destaque por volume
+    const vendCount = {};
+    rows.forEach(r => { const v=r.Vendedor||'Não informado'; vendCount[v]=(vendCount[v]||0)+1; });
+    const topVend = Object.entries(vendCount).sort((a,b)=>b[1]-a[1])[0];
+
+    // Melhor margem média (mín. 3 vendas)
+    const vendMarg = {};
+    rows.forEach(r=>{
+        const v=r.Vendedor||'Não informado';
+        const vv=Number(r['Valor Venda'])||0;
+        const cc=Number(r['Custo Total Final'])||0;
+        if(vv<=0) return;
+        const m=((vv-cc)/vv)*100;
+        if(!vendMarg[v]) vendMarg[v]={sum:0,n:0};
+        vendMarg[v].sum+=m; vendMarg[v].n++;
+    });
+    const melhorMargem = Object.entries(vendMarg)
+        .filter(([,o])=>o.n>=3)
+        .map(([v,o])=>[v, o.sum/o.n, o.n])
+        .sort((a,b)=>b[1]-a[1])[0];
+
+    // Monta cards (4 a 6 insights)
+    const cards = [];
+
+    if(topModelo){
+        cards.push({
+            icon:'fa-car-side', head:'Modelo destaque',
+            text:`${topModelo[0]} lidera com ${NUM(topModelo[1])} venda(s).`
+        });
+    }
+    if(topLoja){
+        cards.push({
+            icon:'fa-store', head:'Loja com mais vendas',
+            text:`${topLoja[0]} domina com ${NUM(topLoja[1])} unidade(s).`
+        });
+    }
+    if(topVend){
+        cards.push({
+            icon:'fa-user-tie', head:'Vendedor destaque',
+            text:`${topVend[0]} soma ${NUM(topVend[1])} venda(s).`
+        });
+    }
+    if(melhorMargem){
+        cards.push({
+            icon:'fa-chart-line', head:'Melhor margem média',
+            text:`${melhorMargem[0]} com ${PCT(melhorMargem[1])} (≥ ${melhorMargem[2]} vendas).`
+        });
+    }
+    // Ticket médio com variação vs base
+    cards.push({
+        icon:'fa-ticket', head:'Ticket médio',
+        text:`${BRL(k.ticketMedio)} <span class="trend ${trendClass}"><i class="fa-solid ${trendIcon}"></i> ${Math.abs(deltaTicket).toFixed(1).replace('.',',')}%</span> vs. base.`
+    });
+
+    // Cor mais vendida
+    cards.push({
+        icon:'fa-palette', head:'Cor mais vendida',
+        text:`${k.corMaisVendida || '—'}.`
+    });
+
+    // Giro médio
+    cards.push({
+        icon:'fa-rotate', head:'Giro médio (dias)',
+        text:`${Number.isFinite(k.mediaDiasEstoque) ? k.mediaDiasEstoque.toFixed(1).replace('.',',') : '—'} dia(s) em média.`
+    });
+
+    // Define quantos mostrar (4 se poucos dados, 6 se ok)
+    const showQty = n < 10 ? 4 : 6;
+    const chosen = cards.slice(0, showQty);
+
+    grid.innerHTML = chosen.map(c => `
+        <div class="insight-card">
+            <div class="insight-ico"><i class="fa-solid ${c.icon}"></i></div>
+            <div class="insight-body">
+                <div class="insight-head">${c.head}</div>
+                <div class="insight-txt">${c.text}</div>
+            </div>
+        </div>
+    `).join('');
 }
 
 /* ===== KPIs AGRUPADOS (render) ===== */
@@ -688,8 +849,8 @@ function renderKpiGroups(){
       <div class="kpi-group">
         <div class="title"><i class="fa-solid fa-percent"></i> Percentuais</div>
         <div class="kpi-grid">
-            <div class="kpi"><div class="lab">Lucro Bruto %</div><div class="${margemBrutaClass}">${k.margemBrutaPercent.toFixed(2)}%</div></div>
-            <div class="kpi"><div class="lab">Lucro Líquido NBS %</div><div class="${margemLiquidaClass}">${k.margemLiquidaPercent.toFixed(2)}%</div></div>
+            <div class="kpi"><div class="lab">Lucro Bruto %</div><div class="${margemBrutaClass}">${PCT(k.margemBrutaPercent)}</div></div>
+            <div class="kpi"><div class="lab">Lucro Líquido NBS %</div><div class="${margemLiquidaClass}">${PCT(k.margemLiquidaPercent)}</div></div>
         </div>
       </div>
 
@@ -700,10 +861,10 @@ function renderKpiGroups(){
             <div class="kpi"><div class="lab">Giro de estoque (dias)</div><div class="val">${Number.isFinite(k.mediaDiasEstoque)? k.mediaDiasEstoque.toFixed(1): '0'}</div></div>
             <div class="kpi"><div class="lab">KM Médio</div><div class="val">${k.kmMedio? NUM(Math.round(k.kmMedio)) : '—'}</div></div>
             <div class="kpi"><div class="lab">Ano Médio</div><div class="val">${k.anoMedio? Math.round(k.anoMedio): '—'}</div></div>
+            <div class="kpi"><div class="lab">Cor Mais Vendida</div><div class="val">${k.corMaisVendida}</div></div>
         </div>
       </div>
     `;
-
     document.getElementById('kpiGroups').innerHTML = gruposHTML;
 }
 
@@ -922,7 +1083,7 @@ function renderCharts(rows){
         }
     });
 
-    /* Margem média por vendedor — agora calculada (venda - custo)/venda */
+    /* Margem média por vendedor */
     const margemAgg = {};
     rows.forEach(r=>{
         const vend = r.Vendedor || 'Não informado';
