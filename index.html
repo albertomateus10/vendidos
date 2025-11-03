@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Vendas — Dashboard</title>
+<title>Veículos Vendidos — Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 <style>
@@ -17,11 +17,8 @@
     .container{max-width:1600px; margin:24px auto; background:#fff; border:1px solid rgba(0,0,0,.04); border-radius:22px; box-shadow:var(--shadow); padding:28px; min-height:60vh}
     .header{display:flex; align-items:center; gap:14px; margin-bottom:6px}
     .header h1{margin:0; font-size:28px; font-weight:800; background:linear-gradient(135deg,var(--primary),var(--primary-2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent}
-    .sub{color:#64748b; margin:0 0 16px}
 
-    /* Storytelling */
-    .insights{ margin:14px 0 18px; }
-    .insights-title{ display:flex; align-items:center; gap:10px; font-weight:900; font-size:1.05rem; color:#0f172a; margin:0 0 10px; }
+    .insights{ margin:10px 0 18px; }
     .insights-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
     @media (max-width:1200px){ .insights-grid{ grid-template-columns:repeat(2,1fr); } }
     @media (max-width:720px){ .insights-grid{ grid-template-columns:1fr; } }
@@ -29,7 +26,7 @@
         border:1px solid var(--border); border-radius:14px; padding:12px 12px; background:#fff;
         box-shadow:0 8px 20px rgba(2,6,23,.05); display:flex; gap:10px; align-items:flex-start; min-height:64px;
     }
-    .insight-ico{ font-size:18px; color:var(--primary); padding:8px; border-radius:10px; background:linear-gradient(135deg,#eff6ff,#f8fbff); }
+    .insight-ico{ font-size:18px; color:#1e40af; padding:8px; border-radius:10px; background:linear-gradient(135deg,#eff6ff,#f8fbff); }
     .insight-body{ display:flex; flex-direction:column; gap:4px; }
     .insight-head{ font-size:.82rem; color:#64748b; text-transform:uppercase; font-weight:800; letter-spacing:.3px }
     .insight-txt{ font-size:.98rem; font-weight:700; color:#111827; line-height:1.25 }
@@ -73,7 +70,6 @@
 
     .section{background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; margin-top:12px}
 
-    /* KPIs */
     .kpi-groups{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
     @media (max-width: 1200px){ .kpi-groups{ grid-template-columns:1fr; } }
     .kpi-group{
@@ -96,13 +92,12 @@
     .kpi .val.neg{ color:var(--danger); }
 
     .charts{display:grid; grid-template-columns:repeat(2,1fr); gap:16px}
-    .chart{height:360px}
-    .chart.large{height:420px}
+    .chart{height:380px}
 
     .table{overflow:auto}
     table{width:100%; border-collapse:collapse; font-size:.9rem}
-    th,td{padding:10px 12px; border-bottom:1px solid var(--border")}
-    th{position:sticky; top:0; background:#f5f9ff; text-align:left; user-select:none; white-space:nowrap}
+    th,td{padding:10px 12px; border-bottom:1px solid var(--border)}
+    th{position:sticky; top:0; background:#f59fff; text-align:left; user-select:none; white-space:nowrap}
     th.sortable{cursor:pointer}
     th .sort{margin-left:6px; color:#64748b}
     th.active{color:#1e293b}
@@ -116,12 +111,10 @@
 <body>
 <div class="container">
     <div class="header">
-        <h1><i class="fa-solid fa-chart-line"></i> Vendas</h1>
+        <h1>Veículos Vendidos</h1>
     </div>
 
-    <!-- STORYTELLING & INSIGHTS -->
     <div class="insights">
-        <div class="insights-title"><i class="fa-solid fa-lightbulb"></i> Storytelling & Insights</div>
         <div id="insightsGrid" class="insights-grid"></div>
     </div>
 
@@ -142,7 +135,6 @@
 
     <div class="filters" id="filters"></div>
 
-    <!-- KPIs AGRUPADOS -->
     <div class="section">
         <div id="kpiGroups" class="kpi-groups"></div>
     </div>
@@ -151,7 +143,7 @@
     <div class="section">
         <div class="charts">
             <div class="chart"><canvas id="lojaChart"></canvas></div>
-            <div class="chart large"><canvas id="modeloChart"></canvas></div>
+            <div class="chart"><canvas id="modeloChart"></canvas></div>
             <div class="chart"><canvas id="faixasEstoqueChart"></canvas></div>
             <div class="chart"><canvas id="vendedorRecebeuChart"></canvas></div>
             <div class="chart"><canvas id="vendedorChart"></canvas></div>
@@ -159,7 +151,6 @@
         </div>
     </div>
 
-    <!-- TABELA -->
     <div class="section table">
         <table id="grid">
             <thead>
@@ -184,6 +175,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script>
 /* ===== Helpers UI ===== */
 function showError(msg){ const el=document.getElementById('alertError'); el.querySelector('.msg').textContent=msg; el.classList.add('show'); }
@@ -302,6 +294,30 @@ function normalizePlate(val){
     }
     return s;
 }
+
+/* ====== NORMALIZADOR DE COR (usa coluna COR) ====== */
+function normalizeColorName(raw){
+    if(raw === null || raw === undefined) return 'NÃO INFORMADA';
+    let s = String(raw).toUpperCase();
+    if(!s.trim()) return 'NÃO INFORMADA';
+
+    // remove acentos simples
+    s = s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+
+    // mapeamento direto por palavras-chave (primeira cor que aparecer)
+    const cores = [
+        'PRETO','BRANCO','CINZA','PRATA','AZUL','VERMELHO','VERDE','AMARELO','MARROM','BEGE','DOURADO','LARANJA','ROXO','GRAFITE'
+    ];
+    for(const c of cores){
+        const re = new RegExp(`\\b${c}\\b`);
+        if(re.test(s)) return c === 'GRAFITE' ? 'CINZA' : c;
+    }
+
+    // fallback: primeira palavra (muito útil para "AZUL AMALFI TETO PRE")
+    const first = s.split(/\s+/)[0];
+    return cores.includes(first) ? (first==='GRAFITE'?'CINZA':first) : first;
+}
+
 function findCol(headers, aliases){
     const lc = headers.map(h => String(h||'').toLowerCase().trim());
     for(const a of aliases){
@@ -521,13 +537,12 @@ function parseRows(headers, data){
         diasEst:    findCol(headers, ['DPT','Dias de Estoque','DIAS DE ESTOQUE','DiasEstoque','Dias_Estoque','Dias em Estoque']),
         dataVend:   findCol(headers, ['Data Venda','DATA VENDA','Data de Venda','Data venda','Data','DATA']),
         ganhosInd:  findCol(headers, ['Ganhos Indiretos','GANHOS INDIRETOS','Ganho Indireto','GANHO INDIRETO']),
-        /* SUPORTE À COR EXTERNA */
-        cor:        findCol(headers, [
-                        'Cor Externa','COR EXTERNA',
-                        'Cor','COR',
-                        'Cor Veículo','Cor do Veículo',
-                        'Cor Veiculo','Cor do Veiculo'
-                    ])
+        /* COR — lê explicitamente a coluna COR; se não existir, tenta alias */
+        cor:        (()=>{
+                        const i = findCol(headers, ['COR']); 
+                        if(i>=0) return i;
+                        return findCol(headers, ['Cor Externa','COR EXTERNA','Cor','Cor Veículo','Cor do Veículo','Cor Veiculo','Cor do Veiculo']);
+                    })()
     };
 
     allData = data.map(r=>{
@@ -538,6 +553,9 @@ function parseRows(headers, data){
 
         const dataVendaCell = get(idx.dataVend);
         const mesCap = monthNameFromCell(dataVendaCell);
+
+        const corBruta = get(idx.cor);
+        const corBase = normalizeColorName(corBruta);
 
         return {
             Vendedor: get(idx.vendedor) ?? 'Não informado',
@@ -561,7 +579,8 @@ function parseRows(headers, data){
             'Dias de Estoque': dptNorm,
             MesNome: mesCap,
             'Ganhos Indiretos': toNumberBR(get(idx.ganhosInd)),
-            Cor: (get(idx.cor) ?? 'Não informado')
+            Cor: corBruta ?? 'Não informada',
+            CorBase: corBase
         };
     });
 
@@ -637,7 +656,7 @@ function applyFilters(){
 
         return lojaOk && vendOk && modOk && tipoOk && mesOk && valorOk && dptOk && qOk && notExcluded;
     });
-    renderInsights(filtered);     /* <<< STORYTELLING ATUALIZA JUNTO */
+    renderInsights(filtered);
     renderKpiGroups();
     renderTable(sortRows([...filtered]));
     renderCharts(filtered);
@@ -673,12 +692,10 @@ function calcKPIs(rows){
 
     const custoMedioNota = n ? (notaEntradaTotal / n) : 0;
 
-    /* Cor mais vendida (moda) */
+    /* Cor mais vendida — usa CorBase (derivada da coluna COR) */
     const coresCount = {};
     rows.forEach(r=>{
-        const c = (r.Cor ?? '').toString().trim();
-        if(!c) return;
-        const key = c;
+        const key = r.CorBase || 'NÃO INFORMADA';
         coresCount[key] = (coresCount[key] || 0) + 1;
     });
     const corMaisVendida = Object.entries(coresCount).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
@@ -693,7 +710,7 @@ function calcKPIs(rows){
     };
 }
 
-/* ===== STORYTELLING & INSIGHTS ===== */
+/* ===== STORYTELLING ===== */
 function renderInsights(rows){
     const grid = document.getElementById('insightsGrid');
     grid.innerHTML = '';
@@ -705,7 +722,7 @@ function renderInsights(rows){
                 <div class="insight-ico"><i class="fa-solid fa-circle-info"></i></div>
                 <div class="insight-body">
                     <div class="insight-head">Sem dados no filtro</div>
-                    <div class="insight-txt muted">Ajuste os filtros para ver os principais insights de vendas.</div>
+                    <div class="insight-txt muted">Ajuste os filtros para ver os principais insights.</div>
                 </div>
             </div>`;
         return;
@@ -713,28 +730,23 @@ function renderInsights(rows){
 
     const k = calcKPIs(rows);
 
-    // baseline da base completa para comparação (ticket médio)
     const base = calcKPIs(allData && allData.length ? allData : rows);
     const deltaTicket = base.ticketMedio ? ((k.ticketMedio/base.ticketMedio)-1)*100 : 0;
     const trendClass = deltaTicket >= 0 ? 'up' : 'down';
     const trendIcon = deltaTicket >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
 
-    // Top modelo
     const modCount = {};
     rows.forEach(r => { const m=r.ModeloBase||'Não informado'; modCount[m]=(modCount[m]||0)+1; });
     const topModelo = Object.entries(modCount).sort((a,b)=>b[1]-a[1])[0];
 
-    // Top loja
     const lojaCount = {};
     rows.forEach(r => { const l=r.Loja||'Não informado'; lojaCount[l]=(lojaCount[l]||0)+1; });
     const topLoja = Object.entries(lojaCount).sort((a,b)=>b[1]-a[1])[0];
 
-    // Vendedor destaque por volume
     const vendCount = {};
     rows.forEach(r => { const v=r.Vendedor||'Não informado'; vendCount[v]=(vendCount[v]||0)+1; });
     const topVend = Object.entries(vendCount).sort((a,b)=>b[1]-a[1])[0];
 
-    // Melhor margem média (mín. 3 vendas)
     const vendMarg = {};
     rows.forEach(r=>{
         const v=r.Vendedor||'Não informado';
@@ -750,53 +762,24 @@ function renderInsights(rows){
         .map(([v,o])=>[v, o.sum/o.n, o.n])
         .sort((a,b)=>b[1]-a[1])[0];
 
-    // Monta cards (4 a 6 insights)
     const cards = [];
-
     if(topModelo){
-        cards.push({
-            icon:'fa-car-side', head:'Modelo destaque',
-            text:`${topModelo[0]} lidera com ${NUM(topModelo[1])} venda(s).`
-        });
+        cards.push({ icon:'fa-car-side', head:'Modelo destaque', text:`${topModelo[0]} lidera com ${NUM(topModelo[1])} venda(s).` });
     }
     if(topLoja){
-        cards.push({
-            icon:'fa-store', head:'Loja com mais vendas',
-            text:`${topLoja[0]} domina com ${NUM(topLoja[1])} unidade(s).`
-        });
+        cards.push({ icon:'fa-store', head:'Loja com mais vendas', text:`${topLoja[0]} domina com ${NUM(topLoja[1])} unidade(s).` });
     }
     if(topVend){
-        cards.push({
-            icon:'fa-user-tie', head:'Vendedor destaque',
-            text:`${topVend[0]} soma ${NUM(topVend[1])} venda(s).`
-        });
+        cards.push({ icon:'fa-user-tie', head:'Vendedor destaque', text:`${topVend[0]} soma ${NUM(topVend[1])} venda(s).` });
     }
     if(melhorMargem){
-        cards.push({
-            icon:'fa-chart-line', head:'Melhor margem média',
-            text:`${melhorMargem[0]} com ${PCT(melhorMargem[1])} (≥ ${melhorMargem[2]} vendas).`
-        });
+        cards.push({ icon:'fa-chart-line', head:'Melhor margem média', text:`${melhorMargem[0]} com ${PCT(melhorMargem[1])} (≥ ${melhorMargem[2]} vendas).` });
     }
-    // Ticket médio com variação vs base
-    cards.push({
-        icon:'fa-ticket', head:'Ticket médio',
-        text:`${BRL(k.ticketMedio)} <span class="trend ${trendClass}"><i class="fa-solid ${trendIcon}"></i> ${Math.abs(deltaTicket).toFixed(1).replace('.',',')}%</span> vs. base.`
-    });
+    cards.push({ icon:'fa-ticket', head:'Ticket médio', text:`${BRL(k.ticketMedio)} <span class="trend ${trendClass}"><i class="fa-solid ${trendIcon}"></i> ${Math.abs(deltaTicket).toFixed(1).replace('.',',')}%</span> vs. base.` });
+    cards.push({ icon:'fa-palette', head:'Cor mais vendida', text:`${k.corMaisVendida || '—'}.` });
+    cards.push({ icon:'fa-rotate', head:'Giro médio (dias)', text:`${Number.isFinite(k.mediaDiasEstoque) ? k.mediaDiasEstoque.toFixed(1).replace('.',',') : '—'} dia(s) em média.` });
 
-    // Cor mais vendida
-    cards.push({
-        icon:'fa-palette', head:'Cor mais vendida',
-        text:`${k.corMaisVendida || '—'}.`
-    });
-
-    // Giro médio
-    cards.push({
-        icon:'fa-rotate', head:'Giro médio (dias)',
-        text:`${Number.isFinite(k.mediaDiasEstoque) ? k.mediaDiasEstoque.toFixed(1).replace('.',',') : '—'} dia(s) em média.`
-    });
-
-    // Define quantos mostrar (4 se poucos dados, 6 se ok)
-    const showQty = n < 10 ? 4 : 6;
+    const showQty = rows.length < 10 ? 4 : 6;
     const chosen = cards.slice(0, showQty);
 
     grid.innerHTML = chosen.map(c => `
@@ -810,7 +793,7 @@ function renderInsights(rows){
     `).join('');
 }
 
-/* ===== KPIs AGRUPADOS (render) ===== */
+/* ===== KPIs AGRUPADOS ===== */
 function renderKpiGroups(){
     const k = calcKPIs(filtered);
     const lucroBrutoClass        = k.lucroBruto < 0 ? 'val neg' : 'val';
@@ -821,7 +804,6 @@ function renderKpiGroups(){
     const margemLiquidaClass     = k.margemLiquidaPercent < 0 ? 'val neg' : 'val';
 
     const gruposHTML = `
-      <!-- TOTAIS -->
       <div class="kpi-group">
         <div class="title"><i class="fa-solid fa-sack-dollar"></i> Totais</div>
         <div class="kpi-grid">
@@ -834,7 +816,6 @@ function renderKpiGroups(){
         </div>
       </div>
 
-      <!-- MÉDIAS -->
       <div class="kpi-group">
         <div class="title"><i class="fa-solid fa-chart-line"></i> Médias</div>
         <div class="kpi-grid">
@@ -845,7 +826,6 @@ function renderKpiGroups(){
         </div>
       </div>
 
-      <!-- PERCENTUAIS -->
       <div class="kpi-group">
         <div class="title"><i class="fa-solid fa-percent"></i> Percentuais</div>
         <div class="kpi-grid">
@@ -854,7 +834,6 @@ function renderKpiGroups(){
         </div>
       </div>
 
-      <!-- ESTOQUE / PRODUTO -->
       <div class="kpi-group">
         <div class="title"><i class="fa-solid fa-warehouse"></i> Estoque/Produto</div>
         <div class="kpi-grid">
@@ -968,7 +947,7 @@ document.querySelector('#grid tbody').addEventListener('click', (e)=>{
     }
 });
 
-/* tooltips */
+/* Tooltips e datalabels */
 function pctTooltip() {
     return {
         callbacks: {
@@ -979,6 +958,21 @@ function pctTooltip() {
                 const pct = ((val/total)*100).toFixed(1).replace('.',',');
                 return `${val} / ${pct}%`;
             }
+        }
+    };
+}
+function datalabelsCenter() {
+    return {
+        color: '#ffffff',
+        font: { weight: '700' },
+        anchor: 'center',
+        align: 'center',
+        clip: true,
+        formatter: (v, ctx) => {
+            const data = ctx.dataset.data || [];
+            const total = data.reduce((a,b)=>a+(Number(b)||0), 0) || 1;
+            const pct = ((v/total)*100).toFixed(1).replace('.',',');
+            return `${v} (${pct}%)`;
         }
     };
 }
@@ -998,9 +992,9 @@ function margemTooltip(vendasPorVendedor){
 
 /* gráficos */
 function renderCharts(rows){
-    const commonOpts = { responsive:true, maintainAspectRatio:false, animation:false };
+    const commonOpts = { responsive:true, maintainAspectRatio:false, animation:false, plugins:{ datalabels: {} } };
 
-    /* por loja */
+    /* por loja — BARRAS com datalabels */
     const porLoja={}; rows.forEach(r=>{ const k=r.Loja||'Não informado'; porLoja[k]=(porLoja[k]||0)+1; });
     const lojaArr = Object.entries(porLoja).sort((a,b)=>b[1]-a[1]);
     const l1 = lojaArr.map(x=>x[0]);
@@ -1009,20 +1003,51 @@ function renderCharts(rows){
     charts.loja=new Chart(document.getElementById('lojaChart').getContext('2d'),{
         type:'bar',
         data:{labels:l1,datasets:[{label:'Vendas',data:d1,borderWidth:2,borderRadius:8}]},
-        options:{ ...commonOpts, plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Vendas por Loja'} } }
+        options:{ 
+            ...commonOpts, 
+            plugins:{ 
+                ...commonOpts.plugins,
+                legend:{display:false}, 
+                tooltip: pctTooltip(), 
+                title:{display:true, text:'Vendas por Loja'},
+                datalabels: datalabelsCenter()
+            },
+            scales:{ y:{ beginAtZero:true } }
+        }
     });
 
-    /* top modelos */
+    /* top modelos — BARRAS com paleta + datalabels */
     const porMod={}; rows.forEach(r=>{ const k=r.ModeloBase||'Não informado'; porMod[k]=(porMod[k]||0)+1; });
     const top = Object.entries(porMod).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const palette = ['#6DA3F9','#E56B84','#E5A24C','#EDD06B','#79B9B8'];
+
     if(charts.modelo) charts.modelo.destroy();
     charts.modelo=new Chart(document.getElementById('modeloChart').getContext('2d'),{
-        type:'doughnut',
-        data:{labels:top.map(x=>x[0]), datasets:[{data:top.map(x=>x[1])}]},
-        options:{ ...commonOpts, cutout:'55%', plugins:{ tooltip: pctTooltip(), title:{display:true, text:'Top 5 Modelos Mais Vendidos'} } }
+        type:'bar',
+        data:{
+            labels: top.map(x=>x[0]),
+            datasets:[{
+                label:'Vendas',
+                data: top.map(x=>x[1]),
+                backgroundColor: top.map((_,i)=> palette[i % palette.length]),
+                borderWidth:2,
+                borderRadius:8
+            }]
+        },
+        options:{
+            ...commonOpts,
+            plugins:{ 
+                ...commonOpts.plugins,
+                legend:{display:false}, 
+                tooltip: pctTooltip(), 
+                title:{display:true, text:'Top 5 Modelos Mais Vendidos'},
+                datalabels: datalabelsCenter()
+            },
+            scales:{ y:{ beginAtZero:true } }
+        }
     });
 
-    /* faixas de estoque (semáforo) */
+    /* faixas de estoque */
     const faixas = { '1–30':0, '31–60':0, '61–90':0, '91–120':0, '121+':0 };
     rows.forEach(r=>{
         const d = r['Dias de Estoque'];
@@ -1050,7 +1075,7 @@ function renderCharts(rows){
             }]
         },
         options:{ 
-            ...commonOpts,
+            responsive:true, maintainAspectRatio:false, animation:false,
             plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Distribuição por Faixas de Dias de Estoque '} }
         }
     });
@@ -1065,7 +1090,7 @@ function renderCharts(rows){
         type:'bar',
         data:{labels:l3,datasets:[{label:'Vendas',data:d3,borderWidth:2,borderRadius:8}]},
         options:{ 
-            ...commonOpts,
+            responsive:true, maintainAspectRatio:false, animation:false,
             plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'TOP 10 Vendedores — Vendas'} },
             onClick: (evt) => {
                 const points = charts.vendedor.getElementsAtEventForMode(evt, 'nearest', {intersect:true}, true);
@@ -1109,7 +1134,7 @@ function renderCharts(rows){
         type:'bar',
         data:{labels:lM, datasets:[{label:'Margem média (%)', data:dM, borderWidth:2, borderRadius:8}]},
         options:{
-            ...commonOpts,
+            responsive:true, maintainAspectRatio:false, animation:false,
             plugins:{ 
                 legend:{display:false}, 
                 tooltip: margemTooltip(mapQtd),
@@ -1149,7 +1174,7 @@ function renderCharts(rows){
     charts.vendRecebeu = new Chart(document.getElementById('vendedorRecebeuChart').getContext('2d'), {
         type:'bar',
         data:{ labels:l4, datasets:[{ label:'Qtde de trocas recebidas', data:d4, borderWidth:2, borderRadius:8 }]},
-        options:{ ...commonOpts, plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Top 10 Vendedores que mais receberam carros (troca)'} } }
+        options:{ responsive:true, maintainAspectRatio:false, animation:false, plugins:{ legend:{display:false}, tooltip: pctTooltip(), title:{display:true, text:'Top 10 Vendedores que mais receberam carros (troca)'} } }
     });
 }
 </script>
