@@ -1660,7 +1660,8 @@
                         title: { display: true, text: 'Vendas por Dia do Mês' },
                         tooltip: {
                             callbacks: {
-                                label: (ctx) => `Dia ${ctx.label}: ${ctx.raw} venda(s)`
+                                title: () => '',
+                                label: (ctx) => `${ctx.raw} venda(s)`
                             }
                         },
                         datalabels: {
